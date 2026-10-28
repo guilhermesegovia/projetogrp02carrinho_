@@ -1,0 +1,8 @@
+{
+  "name": "dinhos-canal6-static",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:spring": "node scripts/build-spring.mjs"
+  }
+}
