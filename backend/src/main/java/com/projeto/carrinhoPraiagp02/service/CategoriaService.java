@@ -21,7 +21,8 @@ public class CategoriaService {
     }
 
     public Categoria criarCategoria(Categoria categoria) {
-        if (categoriaRepo.existsByDocumento(categoria.getDocumento())) {
+        categoria.setNome(normalizeName(categoria.getNome()));
+        if (categoriaRepo.findAll().stream().anyMatch(existing -> nameKey(existing.getNome()).equals(nameKey(categoria.getNome())))) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Categoria já existe");
         }
         return categoriaRepo.save(categoria);
@@ -31,7 +32,12 @@ public class CategoriaService {
         Categoria categoriaExistente = categoriaRepo.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Categoria não encontrada"));
 
-        categoriaExistente.setNome(categoriaAtualizada.getNome());
+        String normalizedName = normalizeName(categoriaAtualizada.getNome());
+        if (categoriaRepo.findAll().stream().anyMatch(existing -> !existing.getId().equals(id)
+                && nameKey(existing.getNome()).equals(nameKey(normalizedName)))) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Categoria já existe");
+        }
+        categoriaExistente.setNome(normalizedName);
         categoriaExistente.setDescricao(categoriaAtualizada.getDescricao());
 
         return categoriaRepo.save(categoriaExistente);
@@ -47,6 +53,17 @@ public class CategoriaService {
 
     public void excluir(Long id) {
         categoriaRepo.delete(obter(id));
+    }
+
+    private String normalizeName(String name) {
+        if (name == null || name.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "O nome da categoria é obrigatório");
+        }
+        return name.strip().replaceAll("\\s+", " ");
+    }
+
+    private String nameKey(String name) {
+        return normalizeName(name).toLowerCase(java.util.Locale.ROOT);
     }
 
 }

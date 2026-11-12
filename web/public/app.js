@@ -8,11 +8,12 @@
     ['estoque', 'Estoque', '▦', ['gerente']], ['relatorios', 'Relatórios', '⌁', ['gerente']], ['usuarios', 'Usuários', '♙', []],
   ];
   const paymentOptions = ['Pix', 'Dinheiro', 'Cartão de crédito', 'Cartão de débito'];
-  const ui = { tab: 'comandas', productSearch: '', orderStatus: '', orderNumber: '', orderDate: '', comandaFilter: 'ativas', reportDate: new Date().toISOString().slice(0, 10), cart: [], cartComanda: '', cartPayment: 'Pix', stockProduct: '', stockType: 'entrada', stockQty: 1, productForm: null, userForm: null, productListSearch: '', message: '', error: '' };
+  const ui = { tab: 'comandas', productSearch: '', orderStatus: '', orderNumber: '', orderDate: '', comandaFilter: 'ativas', reportDate: new Date().toISOString().slice(0, 10), cart: [], cartComanda: '', cartPayment: 'Pix', stockProduct: '', stockType: 'entrada', stockQty: 1, productForm: null, userForm: null, productListSearch: '', productNotice: '', message: '', error: '' };
   const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
   const validStock = (value) => value !== null && value !== undefined && String(value).trim() !== '' && Number.isInteger(Number(value)) && Number(value) >= 0;
   const stockValue = (value) => validStock(value) ? Number(value) : 0;
-  const categoryName = (value) => /^bebidas?$/i.test(String(value ?? '').trim()) ? 'Bebidas' : String(value ?? '').trim();
+  const categoryName = store.normalizeCategory;
+  const categoryKey = (value) => categoryName(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('pt-BR');
   const { brl, total } = store;
   const date = (value) => value ? new Date(value).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—';
   const options = (values, selected, emptyLabel) => `${emptyLabel ? `<option value="">${esc(emptyLabel)}</option>` : ''}${values.map((entry) => { const value = typeof entry === 'object' ? entry.value : entry; const label = typeof entry === 'object' ? entry.label : entry; return `<option value="${esc(value)}" ${String(value) === String(selected) ? 'selected' : ''}>${esc(label)}</option>`; }).join('')}`;
@@ -39,7 +40,7 @@
   }
   function venda() {
     const open = store.db.comandas.filter((comanda) => !['fechada', 'cancelada'].includes(comanda.status));
-    const products = store.db.products.filter((product) => product.disponivel && (product.nome + product.sku + product.categoria).toLowerCase().includes(ui.productSearch.toLowerCase()));
+    const products = store.db.products.filter((product) => !product.arquivado && product.disponivel && (product.nome + product.sku + product.categoria).toLowerCase().includes(ui.productSearch.toLowerCase()));
     const productGrid = products.length ? products.map((product) => {
       const count = ui.cart.find((item) => item.productId === product.id)?.qtd || 0;
       return `<button class="product-tile" data-action="add-cart" data-id="${product.id}" ${product.estoque === 0 ? 'disabled' : ''}><span class="tile-category">${esc(product.categoria || 'Cardápio')}</span><strong>${esc(product.nome)}</strong><span class="tile-bottom"><b>${brl(product.preco)}</b><small class="${product.estoque <= product.minimo ? 'low-text' : ''}">${product.estoque ? `${product.estoque} un.` : 'Esgotado'}</small></span>${count ? `<span class="cart-count">${count} no carrinho</span>` : ''}</button>`;
@@ -68,15 +69,18 @@
     const stockValid = validStock(product.estoque);
     const stockDisabled = Boolean(product.id) && stockValid;
     const stockField = input(product.id ? 'Estoque' : 'Estoque inicial', 'estoque', stockValid ? stockValue(product.estoque) : '', 'number', `min="0" step="1" ${stockDisabled ? 'disabled' : 'required'}`);
-    return `<form id="product-form" class="form-stack"><div class="form-title"><span class="eyebrow">CARDÁPIO</span><h2>${product.id ? 'Editar produto' : 'Novo produto'}</h2></div>${input('Nome do produto', 'nome', product.nome, 'text', 'required')}${input('Código / SKU', 'sku', product.sku)}${input('Categoria', 'categoria', categoryName(product.categoria))}${input('Descrição', 'descricao', product.descricao)}<div class="two-fields">${input('Custo', 'custo', product.custo, 'number', 'min="0" step="0.01"')}${input('Preço de venda', 'preco', product.preco, 'number', 'min="0.01" step="0.01" required')}</div><div class="two-fields">${stockField}${input('Estoque mínimo', 'minimo', product.minimo, 'number', 'min="0"')}</div>${stockDisabled ? '<p class="muted tiny">Para alterar este saldo, use a aba Estoque.</p>' : ''}<p class="form-error">${esc(ui.error)}</p><div class="action-row"><button class="button button-primary">Salvar produto</button>${product.id ? btn('Cancelar', 'cancel-product-edit', 'button button-outline') : ''}</div></form>`;
+    const categoryOptions = store.productCategories();
+    return `<form id="product-form" class="form-stack"><div class="form-title"><span class="eyebrow">CARDÁPIO</span><h2>${product.id ? 'Editar produto' : 'Novo produto'}</h2></div>${input('Nome do produto', 'nome', product.nome, 'text', 'required maxlength="100"')}${input('Código / SKU', 'sku', product.sku)}<label class="field"><span>Categoria</span>${select(categoryOptions, categoryName(product.categoria), 'name="categoria" required', 'Selecione uma categoria')}</label>${input('Descrição', 'descricao', product.descricao)}<div class="two-fields">${input('Custo', 'custo', product.custo, 'number', 'min="0" step="0.01"')}${input('Preço de venda', 'preco', product.preco, 'number', 'min="0.01" step="0.01" required')}</div><div class="two-fields">${stockField}${input('Estoque mínimo', 'minimo', product.minimo ?? 5, 'number', 'min="0" step="1" required')}</div>${stockDisabled ? '<p class="muted tiny">Para alterar este saldo, use a aba Estoque.</p>' : ''}<p class="muted tiny">As categorias vêm dos produtos já cadastrados.</p><p class="form-error">${esc(ui.error)}</p><div class="action-row"><button class="button button-primary">Salvar produto</button>${product.id ? btn('Cancelar', 'cancel-product-edit', 'button button-outline') : ''}</div></form>`;
   }
   function produtos() {
     const list = store.db.products.filter((product) => (product.nome + product.sku + product.categoria).toLowerCase().includes(ui.productListSearch.toLowerCase())).sort((a, b) => a.nome.localeCompare(b.nome));
-     return `<div class="management-layout">${card(productForm(), 'form-card')}<section class="card table-card"><div class="table-heading"><div><span class="eyebrow">SEU CARDÁPIO</span><h2>Produtos <small>${list.length}</small></h2></div><label class="searchbox compact"><span>⌕</span><input data-ui="productListSearch" placeholder="Pesquisar…" value="${esc(ui.productListSearch)}"></label></div><div class="table-scroll"><table><thead><tr><th>Produto</th><th>Categoria</th><th>Custo</th><th>Venda</th><th>Estoque</th><th></th></tr></thead><tbody>${list.map((product) => `<tr class="${product.disponivel ? '' : 'inactive-row'}"><td><b>${esc(product.nome)}</b><small>${esc(product.sku)}</small></td><td>${esc(categoryName(product.categoria))}</td><td>${brl(product.custo)}</td><td><b>${brl(product.preco)}</b></td><td class="${stockValue(product.estoque) <= (Number(product.minimo) || 0) ? 'low-text' : ''}">${stockValue(product.estoque)}</td><td class="table-actions">${btn('Editar', 'edit-product', 'button button-outline button-small', `data-id="${product.id}"`)}${btn(product.disponivel ? 'Desativar' : 'Ativar', 'toggle-product', 'text-button', `data-id="${product.id}"`)}</td></tr>`).join('')}</tbody></table></div></section></div>`;
+     return `<div class="management-layout">${card(productForm(), 'form-card')}<section class="card table-card"><div class="table-heading"><div><span class="eyebrow">SEU CARDÁPIO</span><h2>Produtos <small>${list.length}</small></h2></div><label class="searchbox compact"><span>⌕</span><input data-ui="productListSearch" placeholder="Pesquisar…" value="${esc(ui.productListSearch)}"></label></div>${ui.productNotice ? `<p class="success-note" role="status">${esc(ui.productNotice)}</p>` : ''}<div class="table-scroll"><table><thead><tr><th>Produto</th><th>Categoria</th><th>Custo</th><th>Venda</th><th>Estoque</th><th>Ações</th></tr></thead><tbody>${list.map((product) => `<tr class="${product.arquivado || !product.disponivel ? 'inactive-row' : ''}"><td><b>${esc(product.nome)}</b><small>${esc(product.sku)}</small>${product.arquivado ? '<small class="archived-label">Excluído · fora do cardápio</small>' : ''}</td><td>${esc(categoryName(product.categoria))}</td><td>${brl(product.custo)}</td><td><b>${brl(product.preco)}</b></td><td class="${stockValue(product.estoque) <= (Number(product.minimo) || 0) ? 'low-text' : ''}">${stockValue(product.estoque)}</td><td class="table-actions">${btn('Editar', 'edit-product', 'button button-outline button-small', `data-id="${product.id}"`)}${product.arquivado ? btn('Restaurar', 'restore-product', 'text-button', `data-id="${product.id}"`) : `${btn(product.disponivel ? 'Desativar' : 'Ativar', 'toggle-product', 'text-button', `data-id="${product.id}"`)}${btn('Excluir', 'archive-product', 'text-button danger-text', `data-id="${product.id}" aria-label="Excluir ${esc(product.nome)}"`)}`}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">Nenhum produto encontrado.</td></tr>'}</tbody></table></div></section></div>`;
   }
   function estoque() {
     const low = store.db.products.filter((product) => product.disponivel && stockValue(product.estoque) <= (Number(product.minimo) || 0));
-    return `${low.length ? `<div class="alert-card"><span>!</span><div><b>Estoque baixo</b><p>${low.map((product) => `${esc(product.nome)} (${stockValue(product.estoque) === 0 ? 'sem estoque' : stockValue(product.estoque)})`).join(' · ')}</p></div></div>` : ''}${card(`<form id="stock-form" class="inline-form stock-form"><label class="field"><span>Produto</span>${select(store.db.products.map((product) => ({ value: product.id, label: `${product.nome} (${stockValue(product.estoque)})` })), ui.stockProduct || store.db.products[0]?.id, 'name="productId"')}</label><label class="field"><span>Movimentação</span>${select(['entrada', 'saída', 'ajuste', 'devolução'], ui.stockType, 'name="tipo"')}</label>${input(ui.stockType === 'ajuste' ? 'Novo saldo' : 'Quantidade', 'qtd', ui.stockQty, 'number', `min="${ui.stockType === 'ajuste' ? '0' : '1'}" step="1" required`)}${input('Motivo', 'motivo', '', 'text', 'placeholder="Ex.: reposição do dia" maxlength="100"')}<button class="button button-primary">Registrar movimento</button><p class="form-error">${esc(ui.error)}</p></form>`, 'stock-entry')}<section class="card table-card"><div class="table-heading"><div><span class="eyebrow">MOVIMENTO DE MERCADORIA</span><h2>Movimentações <small>${Math.min(store.db.movs.length, 200)}</small></h2></div></div><div class="table-scroll"><table><thead><tr><th>Data</th><th>Produto</th><th>Tipo</th><th>Qtd.</th><th>Saldo</th><th>Usuário</th><th>Motivo</th></tr></thead><tbody>${store.db.movs.slice(0, 200).map((move) => `<tr><td>${date(move.data)}</td><td>${esc(move.nome)}</td><td>${esc(move.tipo)}</td><td>${move.qtd}</td><td>${move.antes} → ${move.depois}</td><td>${esc(move.usuario)}</td><td>${esc(move.motivo)}</td></tr>`).join('') || '<tr><td colspan="7" class="muted">Ainda não há movimentações.</td></tr>'}</tbody></table></div></section>`;
+    const activeProducts = store.db.products.filter((product) => !product.arquivado);
+    const selectedProduct = activeProducts.some((product) => product.id === ui.stockProduct) ? ui.stockProduct : activeProducts[0]?.id;
+    return `${low.length ? `<div class="alert-card"><span>!</span><div><b>Estoque baixo</b><p>${low.map((product) => `${esc(product.nome)} (${stockValue(product.estoque) === 0 ? 'sem estoque' : stockValue(product.estoque)})`).join(' · ')}</p></div></div>` : ''}${card(`<form id="stock-form" class="inline-form stock-form"><label class="field"><span>Produto</span>${select(activeProducts.map((product) => ({ value: product.id, label: `${product.nome} (${stockValue(product.estoque)})` })), selectedProduct, 'name="productId"', activeProducts.length ? '' : 'Nenhum produto ativo')}</label><label class="field"><span>Movimentação</span>${select(['entrada', 'saída', 'ajuste', 'devolução'], ui.stockType, 'name="tipo"')}</label>${input(ui.stockType === 'ajuste' ? 'Novo saldo' : 'Quantidade', 'qtd', ui.stockQty, 'number', `min="${ui.stockType === 'ajuste' ? '0' : '1'}" step="1" required`)}${input('Motivo', 'motivo', '', 'text', 'placeholder="Ex.: reposição do dia" maxlength="100"')}<button class="button button-primary" ${activeProducts.length ? '' : 'disabled'}>Registrar movimento</button><p class="form-error">${esc(ui.error)}</p></form>`, 'stock-entry')}<section class="card table-card"><div class="table-heading"><div><span class="eyebrow">MOVIMENTO DE MERCADORIA</span><h2>Movimentações <small>${Math.min(store.db.movs.length, 200)}</small></h2></div></div><div class="table-scroll"><table><thead><tr><th>Data</th><th>Produto</th><th>Tipo</th><th>Qtd.</th><th>Saldo</th><th>Usuário</th><th>Motivo</th></tr></thead><tbody>${store.db.movs.slice(0, 200).map((move) => `<tr><td>${date(move.data)}</td><td>${esc(move.nome)}</td><td>${esc(move.tipo)}</td><td>${move.qtd}</td><td>${move.antes} → ${move.depois}</td><td>${esc(move.usuario)}</td><td>${esc(move.motivo)}</td></tr>`).join('') || '<tr><td colspan="7" class="muted">Ainda não há movimentações.</td></tr>'}</tbody></table></div></section>`;
   }
   function relatorios() {
     const day = ui.reportDate;
@@ -133,9 +137,27 @@
     if (action === 'cancel-comanda' && confirm('Cancelar comanda?')) store.updComanda(id, { status: 'cancelada' });
     if (action === 'next-order') store.statusPedido(id, control.dataset.status);
     if (action === 'cancel-order' && confirm('Cancelar pedido? O estoque será devolvido.')) store.statusPedido(id, 'cancelado');
-    if (action === 'edit-product') { ui.productForm = { ...store.db.products.find((entry) => entry.id === id) }; ui.error = ''; render(); }
+    if (action === 'edit-product') { ui.productForm = { ...store.db.products.find((entry) => entry.id === id) }; ui.error = ''; ui.productNotice = ''; render(); }
     if (action === 'cancel-product-edit') { ui.productForm = null; ui.error = ''; render(); }
-    if (action === 'toggle-product') { const product = store.db.products.find((entry) => entry.id === id); store.saveProduct({ id, disponivel: !product.disponivel }); }
+    if (action === 'toggle-product') { const product = store.db.products.find((entry) => entry.id === id); if (product && !product.arquivado) store.saveProduct({ id, disponivel: !product.disponivel }); }
+    if (action === 'archive-product') {
+      const product = store.db.products.find((entry) => entry.id === id);
+       if (product && confirm(`Excluir “${product.nome}” do cardápio? Ele será desativado, mas continuará nos pedidos e relatórios anteriores.`)) {
+        store.archiveProduct(id);
+        if (ui.productForm?.id === id) ui.productForm = null;
+         ui.productNotice = `${product.nome} foi excluído do cardápio. O histórico foi preservado.`;
+        ui.error = '';
+        render();
+      }
+    }
+    if (action === 'restore-product') {
+      const product = store.db.products.find((entry) => entry.id === id);
+      if (product) {
+        store.restoreProduct(id);
+        ui.productNotice = `${product.nome} foi restaurado como inativo. Ative-o para voltar a vender.`;
+        render();
+      }
+    }
     if (action === 'edit-user') { const user = store.db.users.find((entry) => entry.id === id); ui.userForm = { id, nome: user.nome, email: user.email, senha: '', role: user.role }; ui.error = ''; render(); }
     if (action === 'toggle-user') { const user = store.db.users.find((entry) => entry.id === id); store.saveUser({ id, ativo: !user.ativo }); }
   });
@@ -150,23 +172,31 @@
       const rawStock = data.estoque;
       const product = {
         ...data,
+        nome: data.nome.trim(),
         categoria: categoryName(data.categoria),
         custo: Number(data.custo),
         preco: Number(data.preco),
         minimo: Number(data.minimo),
       };
+      const categoryKeyExists = store.productCategories().some((category) => categoryKey(category) === categoryKey(product.categoria));
+      const showProductError = (message) => {
+        ui.error = message;
+        ui.productForm = { ...(ui.productForm || {}), ...data };
+        render();
+      };
       delete product.estoque;
-      if (!product.nome.trim() || product.preco <= 0 || product.custo < 0) { ui.error = 'Preencha nome e valores válidos.'; render(); return; }
+      if (!product.nome) { showProductError('Informe o nome do produto.'); return; }
+      if (!product.categoria || !categoryKeyExists) { showProductError('Selecione uma categoria já cadastrada.'); return; }
+      if (!Number.isFinite(product.preco) || product.preco <= 0 || !Number.isFinite(product.custo) || product.custo < 0) { showProductError('Informe valores válidos para custo e preço de venda.'); return; }
+      if (!Number.isInteger(product.minimo) || product.minimo < 0) { showProductError('Informe um estoque mínimo inteiro maior ou igual a zero.'); return; }
       if (hasStock) {
-        if (!validStock(rawStock)) { ui.error = 'Estoque deve ser um número inteiro maior ou igual a zero.'; render(); return; }
+        if (!validStock(rawStock)) { showProductError('Estoque deve ser um número inteiro maior ou igual a zero.'); return; }
         product.estoque = Number(rawStock);
       } else if (stockRequired) {
-        ui.error = 'Informe um estoque inteiro maior ou igual a zero para este produto.';
-        render();
-        return;
+        showProductError('Informe um estoque inteiro maior ou igual a zero para este produto.'); return;
       }
       if (ui.productForm?.id) product.id = ui.productForm.id;
-      store.saveProduct(product); ui.productForm = null; ui.error = '';
+      store.saveProduct(product); ui.productForm = null; ui.error = ''; ui.productNotice = 'Produto salvo com sucesso.'; render();
     }
     if (form.id === 'user-form') {
       const existing = ui.userForm?.id;

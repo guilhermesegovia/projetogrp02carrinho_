@@ -5,6 +5,13 @@
   const SESSION = 'dinhos-me';
   const uid = () => Math.random().toString(36).slice(2, 10);
   const now = () => new Date().toISOString();
+  const normalizeCategory = (value) => {
+    const name = String(value ?? '').trim().replace(/\s+/g, ' ');
+    if (!name) return '';
+    if (/^bebidas?$/i.test(name)) return 'Bebidas';
+    return name.split(' ').map((word) => word.charAt(0).toLocaleUpperCase('pt-BR') + word.slice(1).toLocaleLowerCase('pt-BR')).join(' ');
+  };
+  const categoryKey = (value) => normalizeCategory(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('pt-BR');
   const product = (nome, categoria, custo, preco, estoque, sku) => ({
     id: uid(), nome, descricao: '', sku, categoria, custo, preco, estoque,
     minimo: 10, disponivel: true, criado: now(),
@@ -28,12 +35,15 @@
   }
   let db;
   try { db = JSON.parse(localStorage.getItem(KEY)) || seed(); } catch (_) { db = seed(); }
-  let migratedCategories = false;
+  let migratedProducts = false;
+  const canonicalCategories = new Map();
   if (Array.isArray(db.products)) db.products.forEach((item) => {
-    if (typeof item.categoria === 'string' && ['bebida', 'bebidas'].includes(item.categoria.trim().toLowerCase()) && item.categoria !== 'Bebidas') {
-      item.categoria = 'Bebidas';
-      migratedCategories = true;
-    }
+    let normalized = normalizeCategory(item.categoria);
+    const key = categoryKey(normalized);
+    if (key && canonicalCategories.has(key)) normalized = canonicalCategories.get(key);
+    else if (key) canonicalCategories.set(key, normalized);
+    if (item.categoria !== normalized) { item.categoria = normalized; migratedProducts = true; }
+    if (item.arquivado === undefined) { item.arquivado = false; migratedProducts = true; }
   });
   const state = { db, me: null };
   try {
@@ -55,7 +65,7 @@
       repairedComandas = true;
     }
   });
-  if (repairedComandas || migratedCategories) localStorage.setItem(KEY, JSON.stringify(state.db));
+  if (repairedComandas || migratedProducts) localStorage.setItem(KEY, JSON.stringify(state.db));
   const validStock = (value) => {
     if (value === null || value === undefined || value === '') return false;
     const stock = Number(value);
@@ -73,6 +83,16 @@
   }
   const store = {
     get db() { return state.db; }, get me() { return state.me; },
+    normalizeCategory,
+    productCategories() {
+      const categories = new Map();
+      state.db.products.forEach((item) => {
+        const name = normalizeCategory(item.categoria);
+        const key = categoryKey(name);
+        if (key && !categories.has(key)) categories.set(key, name);
+      });
+      return [...categories.values()].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    },
     can(...roles) { return !!state.me && (state.me.role === 'admin' || roles.includes(state.me.role)); },
     login(email, password) {
       const user = state.db.users.find((entry) => entry.email.toLowerCase() === email.toLowerCase() && entry.senha === password && entry.ativo);
@@ -92,7 +112,7 @@
     saveProduct(productData) {
       const data = clone(state.db);
       const incoming = { ...productData };
-      if (Object.prototype.hasOwnProperty.call(incoming, 'categoria') && typeof incoming.categoria === 'string' && ['bebida', 'bebidas'].includes(incoming.categoria.trim().toLowerCase())) incoming.categoria = 'Bebidas';
+      if (Object.prototype.hasOwnProperty.call(incoming, 'categoria')) incoming.categoria = normalizeCategory(incoming.categoria);
       if (incoming.id) {
         const existing = data.products.find((entry) => entry.id === incoming.id);
         if (Object.prototype.hasOwnProperty.call(incoming, 'estoque') && !validStock(incoming.estoque)) delete incoming.estoque;
@@ -101,6 +121,22 @@
         const stock = Object.prototype.hasOwnProperty.call(incoming, 'estoque') && validStock(incoming.estoque) ? Number(incoming.estoque) : 0;
         data.products.push({ id: uid(), descricao: '', sku: '', categoria: '', custo: 0, preco: 0, estoque: stock, minimo: 5, disponivel: true, criado: now(), ...incoming, estoque: stock });
       }
+      state.db = data; save();
+    },
+    archiveProduct(productId) {
+      const data = clone(state.db);
+      const existing = data.products.find((entry) => entry.id === productId);
+      if (!existing) return;
+      existing.arquivado = true;
+      existing.disponivel = false;
+      state.db = data; save();
+    },
+    restoreProduct(productId) {
+      const data = clone(state.db);
+      const existing = data.products.find((entry) => entry.id === productId);
+      if (!existing) return;
+      existing.arquivado = false;
+      existing.disponivel = false;
       state.db = data; save();
     },
     stock(productId, type, quantity, reason) {

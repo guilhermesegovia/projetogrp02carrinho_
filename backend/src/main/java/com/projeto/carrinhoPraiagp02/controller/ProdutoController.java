@@ -35,7 +35,7 @@ public class ProdutoController {
     }
 
     record Input(@NotBlank String nome, String descricao, @Size(max = 2048) String fotoUrl, @NotNull
-            @DecimalMin("0.00") java.math.BigDecimal preco, @NotNull
+            @DecimalMin(value = "0.00", inclusive = false) java.math.BigDecimal preco, @NotNull
             @PositiveOrZero Integer quantidadeEstoque, @NotNull
             @PositiveOrZero Integer estoqueMinimo, @NotBlank String categoria, @NotNull Boolean disponibilidade) {}
 

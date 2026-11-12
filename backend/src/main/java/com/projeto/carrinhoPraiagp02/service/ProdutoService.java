@@ -33,8 +33,10 @@ public class ProdutoService {
     }
 
     public Produto save(Produto p) {
-        if (p.getPreco() == null || p.getPreco().signum() < 0 || p.getQuantidadeEstoque() == null || p.getQuantidadeEstoque() < 0 || p.getEstoqueMinimo() == null || p.getEstoqueMinimo() < 0) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "O preço ou o estoque do produto é inválido.");
+        if (p.getNome() == null || p.getNome().isBlank() || p.getCategoria() == null || p.getCategoria().isBlank()
+                || p.getPreco() == null || p.getPreco().signum() <= 0 || p.getQuantidadeEstoque() == null || p.getQuantidadeEstoque() < 0
+                || p.getEstoqueMinimo() == null || p.getEstoqueMinimo() < 0 || p.getDisponibilidade() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Os dados do produto são inválidos.");
 
         }
         Produto saved = repo.save(p);
@@ -48,7 +50,12 @@ public class ProdutoService {
         Produto current = get(id);
         if (!current.getQuantidadeEstoque().equals(stock)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Altere o estoque pelo recurso de movimentação de estoque.");
-        }current.setNome(nome);
+        }
+        if (nome == null || nome.isBlank() || category == null || category.isBlank() || stock == null || stock < 0
+                || minimum == null || minimum < 0 || preco == null || preco.signum() <= 0 || available == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Os dados do produto são inválidos.");
+        }
+        current.setNome(nome);
         current.setDescricao(descricao);
         current.setFotoUrl(fotoUrl);
         current.setPreco(preco);
@@ -59,7 +66,9 @@ public class ProdutoService {
     }
 
     private Produto saveExisting(Produto product) {
-        if (product.getPreco() == null || product.getPreco().signum() < 0 || product.getEstoqueMinimo() == null || product.getEstoqueMinimo() < 0) {
+        if (product.getNome() == null || product.getNome().isBlank() || product.getCategoria() == null || product.getCategoria().isBlank()
+                || product.getPreco() == null || product.getPreco().signum() <= 0 || product.getQuantidadeEstoque() == null
+                || product.getQuantidadeEstoque() < 0 || product.getEstoqueMinimo() == null || product.getEstoqueMinimo() < 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Os dados do produto são inválidos.");
         }return repo.save(product);
     }

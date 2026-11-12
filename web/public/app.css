@@ -101,3 +101,5 @@
   .login-art{padding-top:calc(25px + env(safe-area-inset-top))}
   .login-card{padding-bottom:calc(38px + env(safe-area-inset-bottom))}
 }
+.success-note{margin:0 0 14px;padding:11px 13px;border:1px solid #cfe3d9;border-radius:7px;background:#f0f8f3;color:#28644f;font-size:12px;line-height:1.5}
+.archived-label{color:var(--red)!important;font-weight:700}
