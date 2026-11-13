@@ -3,13 +3,16 @@
 
   const root = document.getElementById('public-menu');
   const demoStore = window.DinhosStore;
+  const mesaToken = new URLSearchParams(window.location.search).get('mesa') || '';
   const categoryName = (value) => /^bebidas?$/i.test(String(value ?? '').trim()) ? 'Bebidas' : String(value ?? '').trim();
   const state = {
     search: '',
     category: 'Todos',
     basket: [],
     customerName: '',
-    payment: 'PIX',
+    mesa: null,
+    mesaLoading: Boolean(mesaToken),
+    mesaError: '',
     source: 'loading',
     status: '',
     statusType: 'info',
@@ -62,6 +65,7 @@
           <div class="eyebrow">FEITO NA PRAIA, COM CARINHO</div>
           <h1>Nosso cardápio</h1>
           <p>Escolha seus favoritos e aproveite o dia à beira-mar.</p>
+          ${state.mesa ? `<div class="menu-table-context" role="status">Pedido para <b>Mesa ${escapeHtml(state.mesa.numero)}</b></div>` : state.mesaLoading ? '<div class="menu-table-context" role="status">Identificando sua mesa…</div>' : state.mesaError ? `<div class="menu-table-context menu-table-error" role="alert">${escapeHtml(state.mesaError)}</div>` : ''}
         </section>
         ${state.source === 'fallback' ? `<div class="menu-notice demo-notice"><span aria-hidden="true">ⓘ</span><div><b>Compra de demonstração</b><p>O catálogo online está indisponível. Você pode testar uma compra local; não há cobrança nem envio de pedido ao servidor.</p></div></div>` : ''}
         ${state.source === 'loading' ? '<p class="menu-loading" role="status">Atualizando cardápio…</p>' : ''}
@@ -110,20 +114,16 @@
       ? state.basket.map((item) => `<div class="public-basket-row"><div class="public-basket-copy"><b>${escapeHtml(item.nome)}</b><small>${money(item.preco)} cada</small></div><div class="public-quantity"><button type="button" data-quantity="-1" data-id="${escapeHtml(item.id)}" aria-label="Diminuir ${escapeHtml(item.nome)}" ${state.busy ? 'disabled' : ''}>−</button><span>${item.quantidade}</span><button type="button" data-quantity="1" data-id="${escapeHtml(item.id)}" aria-label="Aumentar ${escapeHtml(item.nome)}" ${state.busy ? 'disabled' : ''}>＋</button></div><b class="public-line-total">${money(item.preco * item.quantidade)}</b></div>`).join('')
       : `<div class="public-basket-empty"><span>＋</span><b>Seu carrinho está vazio</b><p>Adicione itens do cardápio para fazer seu pedido.</p></div>`;
     const formMarkup = demo
-      ? `<p class="public-demo-checkout-note">Compra de demonstração: não haverá cobrança nem pedido no servidor.</p><form id="checkout-form" class="public-checkout-form demo-checkout-form"><label class="field"><span>Seu nome</span><input name="customerName" type="text" autocomplete="name" maxlength="100" placeholder="Como podemos chamar você?" value="${escapeHtml(state.customerName)}" required ${state.busy ? 'disabled' : ''}></label>${paymentField()}<button class="button button-primary full-width" type="submit" ${!state.basket.length || state.busy ? 'disabled' : ''}>${state.busy ? 'Finalizando demonstração…' : 'Finalizar compra de demonstração'} <span aria-hidden="true">→</span></button></form>`
+      ? `<p class="public-demo-checkout-note">Compra de demonstração: não haverá cobrança nem pedido no servidor.</p><form id="checkout-form" class="public-checkout-form demo-checkout-form"><label class="field"><span>Seu nome</span><input name="customerName" type="text" autocomplete="name" maxlength="100" placeholder="Como podemos chamar você?" value="${escapeHtml(state.customerName)}" required ${state.busy ? 'disabled' : ''}></label><button class="button button-primary full-width" type="submit" ${!state.basket.length || state.busy ? 'disabled' : ''}>${state.busy ? 'Finalizando demonstração…' : 'Finalizar compra de demonstração'} <span aria-hidden="true">→</span></button></form>`
       : loading
         ? '<p class="public-demo-lock">Aguarde enquanto carregamos o catálogo da loja.</p>'
-        : `<form id="checkout-form" class="public-checkout-form"><label class="field"><span>Seu nome</span><input name="customerName" type="text" autocomplete="name" maxlength="100" placeholder="Como podemos chamar você?" value="${escapeHtml(state.customerName)}" required ${state.busy ? 'disabled' : ''}></label>${paymentField()}<button class="button button-primary full-width" type="submit" ${!state.basket.length || state.busy ? 'disabled' : ''}>${state.busy ? 'Enviando pedido…' : 'Fazer pedido'} <span aria-hidden="true">→</span></button><p class="public-payment-note">O pedido usa o estoque da loja; pagamento simulado.</p></form>`;
+        : `<form id="checkout-form" class="public-checkout-form"><label class="field"><span>Seu nome</span><input name="customerName" type="text" autocomplete="name" maxlength="100" placeholder="Como podemos chamar você?" value="${escapeHtml(state.customerName)}" required ${state.busy ? 'disabled' : ''}></label><button class="button button-primary full-width" type="submit" ${!state.basket.length || state.busy || state.mesaLoading || Boolean(mesaToken && !state.mesa) ? 'disabled' : ''}>${state.busy ? 'Enviando pedido…' : 'Fazer pedido'} <span aria-hidden="true">→</span></button><p class="public-payment-note">Pagamento via Pix. A equipe pode ajudar com outras formas.</p></form>`;
     return `<aside class="card public-basket ${demo ? 'demo-basket' : ''}" aria-label="Seu pedido"><div class="public-basket-heading"><div><span class="eyebrow">${demo ? 'PEDIDO DE DEMONSTRAÇÃO' : 'PEDIDO NA PRAIA'}</span><h2>Seu carrinho</h2></div><span class="public-basket-count">${basketCount()}</span></div>${basketMarkup}${state.basket.length ? `<div class="public-basket-total"><span>Total</span><b>${money(basketTotal())}</b></div>` : ''}${state.status ? `<div class="public-checkout-message ${state.statusType}" role="status" aria-live="polite">${escapeHtml(state.status)}</div>` : ''}${formMarkup}</aside>`;
-  }
-
-  function paymentField() {
-    return `<label class="field"><span>Forma de pagamento</span><select name="payment" ${state.busy ? 'disabled' : ''}><option value="PIX" ${state.payment === 'PIX' ? 'selected' : ''}>Pix</option><option value="CARTAO" ${state.payment === 'CARTAO' ? 'selected' : ''}>Cartão</option><option value="DINHEIRO" ${state.payment === 'DINHEIRO' ? 'selected' : ''}>Dinheiro</option></select></label>`;
   }
 
   function confirmationView() {
     const confirmation = state.confirmation;
-    return `<section class="public-success ${confirmation.demo ? 'demo-success' : ''}" role="status"><span class="public-success-mark" aria-hidden="true">✓</span><div><span class="eyebrow">${confirmation.demo ? 'COMPRA DE DEMONSTRAÇÃO' : 'PEDIDO CONFIRMADO'}</span><h2>${confirmation.demo ? 'Demonstração concluída' : `Obrigado, ${escapeHtml(confirmation.customer)}!`}</h2><p>${confirmation.demo ? `Compra local para ${escapeHtml(confirmation.customer)}.` : `Seu pedido`} <b>#${escapeHtml(confirmation.orderId)}</b> ${confirmation.demo ? '— nenhum pedido foi enviado ao servidor.' : 'foi recebido.'} Total: <b>${money(confirmation.total)}</b>.</p></div><button type="button" class="button button-outline button-small" data-dismiss-confirmation>Fechar</button></section>`;
+    return `<section class="public-success ${confirmation.demo ? 'demo-success' : ''}" role="status"><span class="public-success-mark" aria-hidden="true">✓</span><div><span class="eyebrow">${confirmation.demo ? 'COMPRA DE DEMONSTRAÇÃO' : 'PEDIDO CONFIRMADO'}</span><h2>${confirmation.demo ? 'Demonstração concluída' : `Obrigado, ${escapeHtml(confirmation.customer)}!`}</h2><p>${confirmation.demo ? `Compra local para ${escapeHtml(confirmation.customer)}.` : `Seu pedido`} <b>#${escapeHtml(confirmation.orderId)}</b> ${confirmation.demo ? '— nenhum pedido foi enviado ao servidor.' : 'foi recebido.'} Total: <b>${money(confirmation.total)}</b>.</p>${confirmation.mesaNumero ? `<p class="confirmation-table">Mesa <b>${escapeHtml(confirmation.mesaNumero)}</b></p>` : ''}${confirmation.trackingToken ? `<p class="confirmation-tracking">Código de acompanhamento: <b>${escapeHtml(confirmation.trackingToken)}</b></p>` : ''}</div><button type="button" class="button button-outline button-small" data-dismiss-confirmation>Fechar</button></section>`;
   }
 
   function bindEvents() {
@@ -148,13 +148,10 @@
       if (state.transaction && state.transaction.customerName !== nextName.trim()) state.transaction = null;
       state.customerName = nextName;
     });
-    const paymentSelect = root.querySelector('[name="payment"]');
-    if (paymentSelect) paymentSelect.addEventListener('change', () => { state.payment = paymentSelect.value; });
     const form = root.querySelector('#checkout-form');
     if (form) form.addEventListener('submit', (event) => {
       event.preventDefault();
       state.customerName = form.elements.customerName.value;
-      state.payment = form.elements.payment.value;
       checkout();
     });
     const dismiss = root.querySelector('[data-dismiss-confirmation]');
@@ -215,7 +212,7 @@
     }
     if (!response.ok) {
       const validationDetails = data?.details && typeof data.details === 'object' ? Object.values(data.details).filter(Boolean).join(' ') : '';
-      const detail = [data?.message || data?.error || (response.status === 402 ? 'Pagamento recusado. Escolha outra forma de pagamento e tente novamente.' : `A loja não aceitou o pedido (erro ${response.status}).`), validationDetails]
+      const detail = [data?.message || data?.error || `A loja não aceitou o pedido (erro ${response.status}).`, validationDetails]
         .filter(Boolean)
         .join(' ');
       throw new Error(detail);
@@ -233,6 +230,12 @@
       return;
     }
     if (!state.basket.length || (!isApiCatalog() && !isDemoCatalog()) || state.busy) return;
+    if (mesaToken && !state.mesa) {
+      state.status = state.mesaError || 'Não foi possível identificar sua mesa. Peça ajuda à equipe.';
+      state.statusType = 'error';
+      render();
+      return;
+    }
     state.status = '';
     state.statusType = 'info';
     state.busy = true;
@@ -245,7 +248,7 @@
         if (typeof demoStore.criarPedidoDemo !== 'function') {
           throw new Error('A compra de demonstração não está disponível nesta versão do catálogo.');
         }
-        const result = demoStore.criarPedidoDemo(state.basket, state.payment, customerName);
+        const result = demoStore.criarPedidoDemo(state.basket, 'PIX', customerName);
         if (result?.error) throw new Error(result.error);
         if (result?.pedidoId == null) throw new Error('A demonstração não retornou a confirmação da compra.');
         const demoTotal = Number(result.valorTotal);
@@ -253,6 +256,7 @@
           orderId: result.pedidoId,
           total: Number.isFinite(demoTotal) ? demoTotal : basketTotal(),
           customer: customerName,
+          mesaNumero: state.mesa?.numero,
           demo: true,
         };
         state.basket = [];
@@ -266,11 +270,12 @@
       const transaction = state.transaction;
       if (!transaction.csrfToken) {
         const csrf = await apiRequest('/api/auth/csrf');
-        if (!csrf?.token) throw new Error('A loja não conseguiu preparar uma compra segura. Atualize a página e tente novamente.');
-        transaction.csrfToken = csrf.token;
+        const token = csrf?.token || csrf?.csrfToken;
+        if (!token) throw new Error('A loja não conseguiu preparar uma compra segura. Atualize a página e tente novamente.');
+        transaction.csrfToken = token;
       }
       if (!transaction.comandaNumero) {
-        const comanda = await apiRequest('/api/comandas/cliente', { method: 'POST', csrfToken: transaction.csrfToken, body: { nomeCliente: customerName } });
+        const comanda = await apiRequest('/api/comandas/cliente', { method: 'POST', csrfToken: transaction.csrfToken, body: { nomeCliente: customerName, ...(mesaToken ? { mesaToken } : {}) } });
         if (!comanda?.numero) throw new Error('A loja não confirmou a abertura da sua comanda. Tente novamente.');
         transaction.comandaNumero = String(comanda.numero);
       }
@@ -294,11 +299,11 @@
         method: 'POST',
         csrfToken: transaction.csrfToken,
         cartToken: transaction.cartToken,
-        body: { formaPagamento: state.payment },
+        body: {},
       });
       if (result?.pedidoId == null) throw new Error('O pedido foi enviado, mas a confirmação não trouxe o número do pedido. Entre em contato com a equipe.');
       const orderTotal = Number(result.valorTotal);
-      state.confirmation = { orderId: result.pedidoId, total: Number.isFinite(orderTotal) ? orderTotal : basketTotal(), customer: customerName };
+      state.confirmation = { orderId: result.pedidoId, total: Number.isFinite(orderTotal) ? orderTotal : basketTotal(), customer: customerName, mesaNumero: state.mesa?.numero, trackingToken: result.trackingToken };
       state.basket = [];
       state.transaction = null;
       state.status = '';
@@ -348,6 +353,19 @@
     if (event.key === 'dinhos-db') window.location.reload();
   });
   render();
+  if (mesaToken) {
+    fetch(`/api/mesas/publico/${encodeURIComponent(mesaToken)}`, { headers: { Accept: 'application/json' }, credentials: 'same-origin' })
+      .then(async (response) => {
+        if (!response.ok) throw new Error('Não conseguimos identificar esta mesa. Confira o QR ou peça ajuda à equipe.');
+        return response.json();
+      })
+      .then((mesa) => {
+        if (mesa?.id == null || mesa?.numero == null) throw new Error('Não conseguimos identificar esta mesa. Confira o QR ou peça ajuda à equipe.');
+        state.mesa = { id: mesa.id, numero: mesa.numero };
+      })
+      .catch((error) => { state.mesaError = error.message || 'Não conseguimos identificar esta mesa.'; })
+      .finally(() => { state.mesaLoading = false; render(); });
+  }
   fetch('/api/produtos', { headers: { Accept: 'application/json' }, credentials: 'same-origin' })
     .then((response) => response.ok ? response.json() : Promise.reject(new Error('Catálogo indisponível')))
     .then((items) => {

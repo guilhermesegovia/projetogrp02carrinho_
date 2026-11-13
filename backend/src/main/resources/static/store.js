@@ -45,7 +45,7 @@
     if (item.categoria !== normalized) { item.categoria = normalized; migratedProducts = true; }
     if (item.arquivado === undefined) { item.arquivado = false; migratedProducts = true; }
   });
-  const state = { db, me: null };
+  const state = { db, me: null, externalSession: false };
   try {
     const cached = JSON.parse(localStorage.getItem(SESSION));
     state.me = cached && db.users.find((user) => user.id === cached.id && user.ativo) || null;
@@ -83,6 +83,9 @@
   }
   const store = {
     get db() { return state.db; }, get me() { return state.me; },
+    // The admin shell supplies the authenticated backend user for legacy local
+    // tabs; unlike login(), this bridge never writes credentials or session data.
+    useSessionUser(user) { state.externalSession = Boolean(user); state.me = user ? { id: user.id, nome: user.nome || user.name || user.email || 'Equipe', email: user.email || '', role: user.role || 'atendente' } : null; },
     normalizeCategory,
     productCategories() {
       const categories = new Map();
@@ -97,16 +100,16 @@
     login(email, password) {
       const user = state.db.users.find((entry) => entry.email.toLowerCase() === email.toLowerCase() && entry.senha === password && entry.ativo);
       if (!user) return false;
-      state.me = user; localStorage.setItem(SESSION, JSON.stringify(user)); notify(); return true;
+      state.me = user; state.externalSession = false; localStorage.setItem(SESSION, JSON.stringify(user)); notify(); return true;
     },
-    logout() { state.me = null; localStorage.removeItem(SESSION); notify(); },
+    logout() { state.me = null; state.externalSession = false; localStorage.removeItem(SESSION); notify(); },
     saveUser(user) {
       const data = clone(state.db);
       if (user.id) Object.assign(data.users.find((entry) => entry.id === user.id), user);
       else data.users.push({ id: uid(), criado: now(), ativo: true, role: 'atendente', nome: '', email: '', senha: '', ...user });
       state.db = data;
       if (state.me) state.me = data.users.find((entry) => entry.id === state.me.id) || state.me;
-      if (state.me) localStorage.setItem(SESSION, JSON.stringify(state.me));
+      if (state.me && !state.externalSession) localStorage.setItem(SESSION, JSON.stringify(state.me));
       save();
     },
     saveProduct(productData) {

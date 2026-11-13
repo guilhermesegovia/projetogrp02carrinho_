@@ -22,14 +22,14 @@ public class ComandaController {
 
     record Input(@NotBlank String numero, @NotBlank String nomeCliente) {}
 
-    record CustomerOpen(@NotBlank String nomeCliente) {}
+    record CustomerOpen(@NotBlank String nomeCliente, String mesaToken) {}
 
     record PublicComanda(String numero, String nomeCliente, String status, java.math.BigDecimal valorTotal) {}
 
     @PostMapping("/cliente")
     @ResponseStatus(HttpStatus.CREATED)
     public PublicComanda openCustomer(@Valid @RequestBody CustomerOpen input) {
-        Comanda c = service.openForCustomer(input.nomeCliente());
+        Comanda c = service.openForCustomer(input.nomeCliente(), input.mesaToken());
         return new PublicComanda(c.getNumero(), c.getNomeCliente(), c.getStatus(), c.getValorTotal());
     }
 

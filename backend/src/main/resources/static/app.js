@@ -2,13 +2,14 @@
   'use strict';
   const store = window.DinhosStore;
   const root = document.getElementById('app');
+  store.useSessionUser(null);
   const tabs = [
     ['comandas', 'Comandas', '▤', ['atendente', 'gerente']],
-    ['pedidos', 'Pedidos', '◷', ['atendente', 'gerente']], ['produtos', 'Produtos', '◇', ['gerente']],
+    ['pedidos', 'Pedidos', '◷', ['atendente', 'gerente']], ['mesas', 'Mesas / QR', '▦', ['atendente', 'gerente']], ['produtos', 'Produtos', '◇', ['gerente']],
     ['estoque', 'Estoque', '▦', ['gerente']], ['relatorios', 'Relatórios', '⌁', ['gerente']], ['usuarios', 'Usuários', '♙', []],
   ];
   const paymentOptions = ['Pix', 'Dinheiro', 'Cartão de crédito', 'Cartão de débito'];
-  const ui = { tab: 'comandas', productSearch: '', orderStatus: '', orderNumber: '', orderDate: '', comandaFilter: 'ativas', reportDate: new Date().toISOString().slice(0, 10), cart: [], cartComanda: '', cartPayment: 'Pix', stockProduct: '', stockType: 'entrada', stockQty: 1, productForm: null, userForm: null, productListSearch: '', productNotice: '', message: '', error: '' };
+  const ui = { tab: 'comandas', productSearch: '', orderStatus: '', orderNumber: '', orderDate: '', comandaFilter: 'ativas', reportDate: new Date().toISOString().slice(0, 10), cart: [], cartComanda: '', cartPayment: 'Pix', stockProduct: '', stockType: 'entrada', stockQty: 1, productForm: null, userForm: null, productListSearch: '', productNotice: '', message: '', error: '', backendUser: null, authLoading: true, csrfToken: '', csrfDisabled: false, backendOrders: [], backendTables: [], ordersLoading: false, tablesLoading: false, backendMessage: '' };
   const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
   const validStock = (value) => value !== null && value !== undefined && String(value).trim() !== '' && Number.isInteger(Number(value)) && Number(value) >= 0;
   const stockValue = (value) => validStock(value) ? Number(value) : 0;
@@ -22,21 +23,67 @@
   const card = (content, cls = '') => `<section class="card ${cls}">${content}</section>`;
   const btn = (label, action, cls = 'button', extra = '') => `<button type="button" class="${cls}" data-action="${action}" ${extra}>${label}</button>`;
   const badge = (text, danger = false) => `<span class="badge ${danger ? 'danger' : ''}">${esc(text)}</span>`;
+  const orderStatuses = { PENDENTE: 'Pendente', EM_PREPARO: 'Em preparo', PRONTO: 'Pronto', ENTREGUE: 'Entregue', CANCELADO: 'Cancelado' };
+  async function api(path, { method = 'GET', body, csrf = false } = {}) {
+    const headers = { Accept: 'application/json' };
+    if (body !== undefined) headers['Content-Type'] = 'application/json';
+    if (csrf && !ui.csrfDisabled) headers['X-XSRF-TOKEN'] = await getCsrf();
+    let response;
+    try { response = await fetch(path, { method, credentials: 'same-origin', headers, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }); }
+    catch (_) { throw new Error('Não foi possível conectar ao servidor. Confira a conexão e tente novamente.'); }
+    const text = await response.text();
+    let data = null;
+    if (text) { try { data = JSON.parse(text); } catch (_) { data = { message: text }; } }
+    if (!response.ok) throw new Error(data?.message || data?.error || `A solicitação falhou (erro ${response.status}).`);
+    return data;
+  }
+  async function getCsrf() {
+    if (!ui.csrfToken) {
+      const data = await api('/api/auth/csrf');
+      ui.csrfToken = data?.token || data?.csrfToken || '';
+      if (!ui.csrfToken) throw new Error('Não foi possível preparar uma sessão segura. Atualize a página.');
+    }
+    return ui.csrfToken;
+  }
+  function listFrom(data) { return Array.isArray(data) ? data : Array.isArray(data?.content) ? data.content : Array.isArray(data?.items) ? data.items : Array.isArray(data?.pedidos) ? data.pedidos : Array.isArray(data?.mesas) ? data.mesas : []; }
+  function currentUser(data) {
+    const user = data?.user || data?.usuario || data?.principal || data?.data || data;
+    if (!user || !(user.id || user.email || user.nome || user.name)) return null;
+    let role = String(user.role || user.perfil || 'atendente').replace(/^ROLE_/i, '').toLowerCase();
+    if (role === 'admin') role = 'admin';
+    if (role.includes('gerente')) role = 'gerente';
+    if (role === 'funcionario') role = 'gerente';
+    return { ...user, id: user.id ?? user.email, nome: user.nome || user.name || user.email, role };
+  }
+  async function loadOrders(preserveMessage = false) {
+    ui.ordersLoading = true; if (!preserveMessage) ui.backendMessage = ''; render();
+    try { ui.backendOrders = listFrom(await api('/api/pedidos')); }
+    catch (error) { ui.backendMessage = error.message; }
+    finally { ui.ordersLoading = false; render(); }
+  }
+  async function loadTables() {
+    ui.tablesLoading = true; ui.backendMessage = ''; render();
+    try { ui.backendTables = listFrom(await api('/api/mesas')); }
+    catch (error) { ui.backendMessage = error.message; }
+    finally { ui.tablesLoading = false; render(); }
+  }
   function render() {
-    if (!store.me) { root.innerHTML = login(); return; }
+    if (ui.authLoading) { root.innerHTML = '<main class="login-screen auth-loading" role="status">Verificando acesso seguro…</main>'; return; }
+    if (!ui.backendUser) { root.innerHTML = login(); return; }
+    store.useSessionUser(ui.backendUser);
     const available = tabs.filter((tab) => store.can(...tab[3]));
     if (!available.some((tab) => tab[0] === ui.tab)) ui.tab = available[0]?.[0] || 'comandas';
     const current = available.find((tab) => tab[0] === ui.tab);
-    root.innerHTML = `<div class="app-shell"><header class="topbar"><div class="top-inner"><img class="brand-mark" src="logo.png" alt=""><div class="brand-copy"><strong>Dinho's Canal 6</strong><span>Gestão do carrinho de praia</span></div><div class="user-chip"><span class="online-dot"></span><span>${esc(store.me.nome)} <small>· ${esc(store.me.role)}</small></span></div><button class="button button-light button-small" data-action="logout">Sair <span aria-hidden="true">↗</span></button></div></header><nav class="tabs" aria-label="Seções">${available.map(([id, label, icon]) => `<button class="tab ${ui.tab === id ? 'active' : ''}" data-tab="${id}" aria-current="${ui.tab === id ? 'page' : 'false'}"><span>${icon}</span>${label}</button>`).join('')}</nav><main class="main"><div class="page-heading"><div><div class="eyebrow">DINHO'S · CANAL 6</div><h1>${current[1]}</h1><p>${headingNote(ui.tab)}</p></div><div class="today"><span>●</span> Operação local <b>${new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}</b></div></div><div class="view" key="${ui.tab}">${screen()}</div><footer>Feito para o dia a dia na praia <span>·</span> Seus dados ficam neste dispositivo</footer></main></div>`;
+     root.innerHTML = `<div class="app-shell"><header class="topbar"><div class="top-inner"><img class="brand-mark" src="logo.png" alt=""><div class="brand-copy"><strong>Dinho's Canal 6</strong><span>Gestão do carrinho de praia</span></div><div class="user-chip"><span class="online-dot"></span><span>${esc(ui.backendUser.nome)} <small>· ${esc(ui.backendUser.role)}</small></span></div><button class="button button-light button-small" data-action="logout">Sair <span aria-hidden="true">↗</span></button></div></header><nav class="tabs" aria-label="Seções">${available.map(([id, label, icon]) => `<button class="tab ${ui.tab === id ? 'active' : ''}" data-tab="${id}" aria-current="${ui.tab === id ? 'page' : 'false'}"><span>${icon}</span>${label}</button>`).join('')}</nav><main class="main"><div class="page-heading"><div><div class="eyebrow">DINHO'S · CANAL 6</div><h1>${current[1]}</h1><p>${headingNote(ui.tab)}</p></div><div class="today"><span>●</span> Sessão da equipe <b>${new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}</b></div></div><div class="view" key="${ui.tab}">${screen()}</div><footer>Pedidos e mesas conectados ao servidor <span>·</span> As demais abas continuam usando os dados locais deste navegador</footer></main></div>`;
   }
   function headingNote(tab) {
-    return ({ venda: 'Registre pedidos e acompanhe o que sai do balcão.', comandas: 'Acompanhe as mesas, os guarda-sóis e as contas abertas.', pedidos: 'Da cozinha até a entrega, sem perder nenhum pedido.', produtos: 'Cuide do cardápio, dos preços e da disponibilidade.', estoque: 'Entradas, saídas e ajustes em um só lugar.', relatorios: 'Um retrato simples das vendas e do movimento.', usuarios: 'Gerencie quem pode acessar o sistema.' })[tab];
+    return ({ venda: 'Registre pedidos e acompanhe o que sai do balcão.', comandas: 'Acompanhe as mesas, os guarda-sóis e as contas abertas.', pedidos: 'Acompanhe os pedidos recebidos pela loja.', mesas: 'Cadastre mesas e prepare os QR codes para impressão.', produtos: 'Cuide do cardápio, dos preços e da disponibilidade.', estoque: 'Entradas, saídas e ajustes em um só lugar.', relatorios: 'Um retrato simples das vendas e do movimento.', usuarios: 'Gerencie quem pode acessar o sistema.' })[tab];
   }
   function login() {
-    return `<main class="login-screen"><div class="login-art"><div class="sun"></div><div class="login-caption"><span>CANAL 6 · PRAIA</span><h2>Um bom dia<br>começa por aqui.</h2><p>Vendas, comandas e operação do seu carrinho — em um só lugar.</p></div><div class="wave wave-one"></div><div class="wave wave-two"></div></div><form class="login-card" id="login-form"><img src="logo.png" class="login-logo" alt="Dinho's Canal 6"><div class="eyebrow">BEM-VINDO DE VOLTA</div><h1>Entrar no sistema</h1><p class="muted">Acesse sua operação do Canal 6.</p>${input('E-mail', 'email', 'admin@dinhos.com', 'email', 'autocomplete="username" required')}${input('Senha', 'senha', '', 'password', 'autocomplete="current-password" required')}<p class="form-error">${esc(ui.error)}</p><button class="button button-primary login-submit">Entrar <span>→</span></button><p class="demo-note">Acesso inicial <b>admin@dinhos.com</b> / <b>admin123</b></p><a class="public-menu-link" href="/">Voltar ao cardápio público <span aria-hidden="true">↗</span></a></form></main>`;
+    return `<main class="login-screen"><div class="login-art"><div class="sun"></div><div class="login-caption"><span>CANAL 6 · PRAIA</span><h2>Um bom dia<br>começa por aqui.</h2><p>Vendas, comandas e operação do seu carrinho — em um só lugar.</p></div><div class="wave wave-one"></div><div class="wave wave-two"></div></div><form class="login-card" id="login-form"><img src="logo.png" class="login-logo" alt="Dinho's Canal 6"><div class="eyebrow">BEM-VINDO DE VOLTA</div><h1>Entrar no sistema</h1><p class="muted">Acesse sua operação do Canal 6.</p>${input('E-mail', 'email', '', 'email', 'autocomplete="username" required')}${input('Senha', 'senha', '', 'password', 'autocomplete="current-password" required')}<p class="form-error" role="alert">${esc(ui.error)}</p><button class="button button-primary login-submit" ${ui.authLoading ? 'disabled' : ''}>Entrar <span>→</span></button><a class="public-menu-link" href="/">Voltar ao cardápio público <span aria-hidden="true">↗</span></a></form></main>`;
   }
   function screen() {
-    return ({ venda: venda, comandas: comandas, pedidos: pedidos, produtos: produtos, estoque: estoque, relatorios: relatorios, usuarios: usuarios })[ui.tab]();
+    return ({ venda: venda, comandas: comandas, pedidos: pedidos, mesas: mesas, produtos: produtos, estoque: estoque, relatorios: relatorios, usuarios: usuarios })[ui.tab]();
   }
   function venda() {
     const open = store.db.comandas.filter((comanda) => !['fechada', 'cancelada'].includes(comanda.status));
@@ -57,12 +104,20 @@
     return card(`<div class="entity-top"><div><div class="number-mark">#${comanda.numero}</div><h3>${esc(comanda.cliente)}</h3><p>${esc(comanda.local)} · ${date(comanda.aberta)}</p><p>Atendido por ${esc(comanda.responsavel)}</p></div>${badge(comanda.status, comanda.status === 'cancelada')}</div><div class="item-list">${comanda.itens.length ? comanda.itens.map((item) => `<div><span>${item.qtd} × ${esc(item.nome)}</span><b>${brl(item.preco * item.qtd)}</b></div>`).join('') : '<p class="muted">Sem itens — adicione pela aba Venda.</p>'}</div>${active ? `<label class="discount-field">Desconto <span>R$</span><input type="number" min="0" step="0.01" value="${comanda.desconto}" data-action="discount" data-id="${comanda.id}"></label>` : ''}<div class="total-line"><span>Total da comanda</span><b>${brl(total(comanda.itens, comanda.desconto))}</b></div>${comanda.pagamento ? `<p class="muted tiny">Pago com ${esc(comanda.pagamento)} em ${date(comanda.fechada)}</p>` : ''}<p class="muted tiny">${orders.length} pedido(s)</p>${active ? `<div class="action-row">${comanda.status !== 'aguardando pagamento' ? btn('Pedir conta', 'ask-bill', 'button button-outline button-small', `data-id="${comanda.id}"`) : `<div class="settle-row">${select(paymentOptions, 'Pix', `data-payment="${comanda.id}"`)}${btn('Fechar e receber', 'close-bill', 'button button-primary button-small', `data-id="${comanda.id}"`)}</div>`}${store.can('gerente') ? btn('Cancelar', 'cancel-comanda', 'text-button danger-text', `data-id="${comanda.id}"`) : ''}</div>` : ''}`, 'entity-card');
   }
   function pedidos() {
-    const status = ['novo', 'em preparação', 'pronto', 'entregue', 'cancelado'];
-    const list = store.db.pedidos.filter((order) => (!ui.orderStatus || order.status === ui.orderStatus) && (!ui.orderNumber || String(order.numero).includes(ui.orderNumber)) && (!ui.orderDate || order.data.startsWith(ui.orderDate)));
-    return `<div class="card filter-bar">${select(status, ui.orderStatus, 'data-ui="orderStatus"', 'Todos os status')}<input data-ui="orderNumber" placeholder="Nº do pedido" value="${esc(ui.orderNumber)}"><input type="date" data-ui="orderDate" value="${esc(ui.orderDate)}"></div><div class="card-grid">${list.length ? list.map((order) => {
-      const next = { novo: 'em preparação', 'em preparação': 'pronto', pronto: 'entregue' }[order.status];
-      return card(`<div class="entity-top"><div><div class="number-mark">Pedido #${order.numero}</div><p>${date(order.data)} · ${esc(order.responsavel)}</p><p>${order.comanda ? `Comanda #${order.comanda}` : esc(order.pagamento)}</p></div>${badge(order.status, order.status === 'cancelado')}</div><div class="item-list order-items">${order.itens.map((item) => `<div>${item.qtd} × ${esc(item.nome)}</div>`).join('')}</div><div class="total-line"><span>Valor</span><b>${brl(total(order.itens))}</b></div>${next ? `<div class="action-row">${btn(`Avançar · ${next}`, 'next-order', 'button button-primary button-small', `data-id="${order.id}" data-status="${next}"`)}${btn('Cancelar', 'cancel-order', 'text-button danger-text', `data-id="${order.id}"`)}</div>` : ''}<details class="history"><summary>Histórico do pedido</summary>${order.historico.map((entry) => `<p>${date(entry.data)} — ${esc(entry.status)} (${esc(entry.usuario)})</p>`).join('')}</details>`, 'entity-card');
-    }).join('') : '<div class="empty-state">Nenhum pedido encontrado.</div>'}</div>`;
+    const list = ui.backendOrders.filter((order) => (!ui.orderStatus || order.status === ui.orderStatus) && (!ui.orderNumber || String(order.id).includes(ui.orderNumber)) && (!ui.orderDate || String(order.data || '').startsWith(ui.orderDate)));
+    return `${ui.backendMessage ? `<p class="backend-alert" role="alert">${esc(ui.backendMessage)}</p>` : ''}<div class="card filter-bar">${select(Object.entries(orderStatuses).map(([value, label]) => ({ value, label })), ui.orderStatus, 'data-ui="orderStatus"', 'Todos os status')}<input data-ui="orderNumber" aria-label="Buscar pelo número do pedido" placeholder="Nº do pedido" value="${esc(ui.orderNumber)}"><input type="date" aria-label="Filtrar pedidos pela data" data-ui="orderDate" value="${esc(ui.orderDate)}"><button type="button" class="button button-outline button-small" data-action="refresh-orders">Atualizar pedidos</button></div>${ui.ordersLoading ? '<p class="menu-loading" role="status">Carregando pedidos…</p>' : `<div class="card-grid">${list.length ? list.map((order) => {
+      const stages = ['PENDENTE', 'EM_PREPARO', 'PRONTO', 'ENTREGUE'];
+      const current = stages.indexOf(order.status);
+      const nextStatuses = current < 0 ? [] : stages.slice(current + 1);
+      const customer = order.comanda?.nomeCliente || 'Cliente';
+      const mesa = order.comanda?.mesa?.numero;
+      const items = Array.isArray(order.itens) ? order.itens : [];
+      const terminal = order.status === 'ENTREGUE' || order.status === 'CANCELADO';
+      return card(`<div class="entity-top"><div><div class="number-mark">Pedido #${esc(order.id)}</div><p>${date(order.data)}</p><p><b>${esc(customer)}</b>${mesa != null ? ` · Mesa ${esc(mesa)}` : ''}</p></div>${badge(orderStatuses[order.status] || order.status, order.status === 'CANCELADO')}</div><div class="item-list order-items">${items.map((item) => `<div><span>${Number(item.quantidade) || 0} × ${esc(item.produto?.nome || 'Produto')}</span><b>${brl((Number(item.precoUnitario) || 0) * (Number(item.quantidade) || 0))}</b></div>`).join('') || '<p class="muted">Este pedido não tem itens.</p>'}</div><div class="total-line"><span>Total</span><b>${brl(order.valorTotal)}</b></div>${!terminal ? `<div class="order-controls"><label class="field"><span>Atualizar status</span><select data-order-status="${esc(order.id)}" aria-label="Atualizar status do pedido ${esc(order.id)}">${options([{ value: order.status, label: orderStatuses[order.status] || order.status }, ...nextStatuses.map((status) => ({ value: status, label: orderStatuses[status] }))], order.status)}</select></label>${btn('Cancelar pedido', 'cancel-order', 'text-button danger-text', `data-id="${esc(order.id)}"`)}</div>` : ''}`, 'entity-card');
+    }).join('') : '<div class="empty-state">Nenhum pedido encontrado.</div>'}</div>`}`;
+  }
+  function mesas() {
+    return `${ui.backendMessage ? `<p class="backend-alert" role="alert">${esc(ui.backendMessage)}</p>` : ''}${card(`<form id="mesa-form" class="inline-form"><label class="field"><span>Número da mesa</span><input name="numero" type="number" min="1" step="1" inputmode="numeric" required aria-label="Número da nova mesa" placeholder="Ex.: 12"></label><button class="button button-primary">＋ Cadastrar mesa</button></form>`, 'mesa-create-card')}<section class="mesa-toolbar"><div><h2>Mesas cadastradas</h2><p>Imprima um cartão para cada mesa ou salve todos os QR codes.</p></div><div class="action-row"><a class="button button-outline button-small" href="/api/mesas/qrcodes.zip" download>Baixar todos os QR codes</a><button class="button button-primary button-small" type="button" data-action="print-mesas">Imprimir cartões</button><button class="button button-outline button-small" type="button" data-action="refresh-tables">Atualizar</button></div></section>${ui.tablesLoading ? '<p class="menu-loading" role="status">Carregando mesas…</p>' : `<div class="mesa-grid">${ui.backendTables.length ? ui.backendTables.map((mesa) => card(`<div class="mesa-card-heading"><span class="eyebrow">DINHO'S · CANAL 6</span><strong>Mesa ${esc(mesa.numero)}</strong></div><img class="mesa-qr" src="/api/mesas/${encodeURIComponent(mesa.id)}/qrcode.png" alt="QR code da Mesa ${esc(mesa.numero)}"><p>Aponte a câmera para abrir o cardápio.</p><a class="text-button mesa-download" href="/api/mesas/${encodeURIComponent(mesa.id)}/qrcode.png" download="mesa-${esc(mesa.numero)}.png">Baixar QR code desta mesa</a>`, 'mesa-card')).join('') : '<div class="empty-state">Nenhuma mesa cadastrada ainda.</div>'}</div>`}`;
   }
   function productForm() {
     const product = ui.productForm || { nome: '', sku: '', categoria: '', descricao: '', custo: 0, preco: 0, estoque: 0, minimo: 5 };
@@ -111,6 +166,7 @@
   });
   root.addEventListener('change', (event) => {
     const target = event.target;
+    if (target.dataset.orderStatus) { updateOrderStatus(target.dataset.orderStatus, target.value); return; }
     if (target.dataset.ui) { ui[target.dataset.ui] = target.value; render(); }
     if (target.name === 'tipo') { ui.stockType = target.value; render(); }
     if (target.name === 'productId') ui.stockProduct = target.value;
@@ -118,10 +174,13 @@
   });
   root.addEventListener('click', (event) => {
     const tab = event.target.closest('[data-tab]');
-    if (tab) { ui.tab = tab.dataset.tab; ui.message = ''; ui.error = ''; render(); return; }
+    if (tab) { ui.tab = tab.dataset.tab; ui.message = ''; ui.error = ''; render(); if (ui.tab === 'pedidos') loadOrders(); if (ui.tab === 'mesas') loadTables(); return; }
     const control = event.target.closest('[data-action]'); if (!control) return;
     const { action, id } = control.dataset;
-    if (action === 'logout') store.logout();
+    if (action === 'logout') { logout(); return; }
+    if (action === 'refresh-orders') { loadOrders(); return; }
+    if (action === 'refresh-tables') { loadTables(); return; }
+    if (action === 'print-mesas') { window.print(); return; }
     if (action === 'clear-cart') { ui.cart = []; ui.message = ''; render(); }
     if (action === 'add-cart' || action === 'cart-plus' || action === 'cart-minus') {
       const product = store.db.products.find((entry) => entry.id === id);
@@ -135,8 +194,7 @@
     if (action === 'ask-bill') { store.updComanda(id, { status: 'aguardando pagamento' }); }
     if (action === 'close-bill') { const payment = root.querySelector(`[data-payment="${id}"]`)?.value || 'Pix'; store.updComanda(id, { status: 'fechada', pagamento: payment, fechada: new Date().toISOString() }); }
     if (action === 'cancel-comanda' && confirm('Cancelar comanda?')) store.updComanda(id, { status: 'cancelada' });
-    if (action === 'next-order') store.statusPedido(id, control.dataset.status);
-    if (action === 'cancel-order' && confirm('Cancelar pedido? O estoque será devolvido.')) store.statusPedido(id, 'cancelado');
+    if (action === 'cancel-order' && confirm('Cancelar este pedido?')) cancelBackendOrder(id);
     if (action === 'edit-product') { ui.productForm = { ...store.db.products.find((entry) => entry.id === id) }; ui.error = ''; ui.productNotice = ''; render(); }
     if (action === 'cancel-product-edit') { ui.productForm = null; ui.error = ''; render(); }
     if (action === 'toggle-product') { const product = store.db.products.find((entry) => entry.id === id); if (product && !product.arquivado) store.saveProduct({ id, disponivel: !product.disponivel }); }
@@ -163,7 +221,8 @@
   });
   root.addEventListener('submit', (event) => {
     event.preventDefault(); const form = event.target; const data = formData(form);
-    if (form.id === 'login-form') { if (!store.login(data.email, data.senha)) { ui.error = 'E-mail ou senha inválidos'; render(); } }
+    if (form.id === 'login-form') { authenticate(data); return; }
+    if (form.id === 'mesa-form') { createTable(data); return; }
     if (form.id === 'comanda-form') { if (data.cliente.trim()) store.abrirComanda(data.cliente.trim(), data.local.trim() || '—'); }
     if (form.id === 'product-form') {
       const existing = ui.productForm?.id ? store.db.products.find((entry) => entry.id === ui.productForm.id) : null;
@@ -213,4 +272,79 @@
   });
   window.addEventListener('dinhos:change', render);
   render();
+  async function authenticate(data) {
+    ui.error = ''; ui.authLoading = true; render();
+    try {
+      const csrf = await api('/api/auth/csrf');
+      ui.csrfToken = csrf?.token || csrf?.csrfToken || '';
+      ui.csrfDisabled = !ui.csrfToken;
+      if (ui.csrfDisabled) {
+        if (!store.login(data.email.trim(), data.senha)) throw new Error('E-mail ou senha inválidos.');
+        ui.backendUser = currentUser(store.me);
+      } else {
+        await api('/api/auth/login', { method: 'POST', csrf: true, body: { email: data.email.trim(), senha: data.senha } });
+        const response = await api('/api/auth/me');
+        ui.backendUser = currentUser(response);
+      }
+      if (!ui.backendUser) throw new Error('A sessão não foi confirmada. Confira seus dados e tente novamente.');
+      ui.tab = 'pedidos';
+    } catch (error) {
+      ui.backendUser = null;
+      ui.error = error.message || 'Não foi possível entrar. Confira seus dados.';
+    } finally { ui.authLoading = false; render(); if (ui.backendUser && ui.tab === 'pedidos') loadOrders(); }
+  }
+  async function logout() {
+    if (!ui.csrfDisabled) {
+      try { await api('/api/auth/logout', { method: 'POST', csrf: true }); }
+      catch (error) { ui.backendMessage = error.message; }
+    }
+    const localSession = ui.csrfDisabled;
+    ui.backendUser = null; ui.csrfToken = ''; ui.error = ''; ui.authLoading = false;
+    if (localSession) store.logout(); else store.useSessionUser(null);
+    render();
+  }
+  async function updateOrderStatus(id, status) {
+    try {
+      await api(`/api/pedidos/${encodeURIComponent(id)}/status?status=${encodeURIComponent(status)}`, { method: 'PATCH', csrf: true });
+      ui.backendMessage = '';
+    } catch (error) { ui.backendMessage = error.message; }
+    await loadOrders(true);
+  }
+  async function cancelBackendOrder(id) {
+    try {
+      await api(`/api/pedidos/${encodeURIComponent(id)}/cancelar`, { method: 'POST', csrf: true });
+      ui.backendMessage = '';
+    } catch (error) { ui.backendMessage = error.message; }
+    await loadOrders(true);
+  }
+  async function createTable(data) {
+    const numero = Number(data.numero);
+    if (!Number.isInteger(numero) || numero < 1) { ui.backendMessage = 'Informe um número de mesa válido.'; render(); return; }
+    try {
+      await api('/api/mesas', { method: 'POST', csrf: true, body: { numero } });
+      ui.backendMessage = '';
+      await loadTables();
+    } catch (error) { ui.backendMessage = error.message; render(); }
+  }
+  async function rehydrateSession() {
+    try {
+      const csrf = await api('/api/auth/csrf');
+      ui.csrfToken = csrf?.token || csrf?.csrfToken || '';
+      ui.csrfDisabled = !ui.csrfToken;
+      if (!ui.csrfDisabled) {
+        const session = await api('/api/auth/me');
+        ui.backendUser = currentUser(session);
+        if (ui.backendUser) {
+          store.useSessionUser(ui.backendUser);
+          ui.tab = 'pedidos';
+        }
+      }
+    } catch (_) { ui.backendUser = null; }
+    finally {
+      ui.authLoading = false;
+      render();
+      if (ui.backendUser && ui.tab === 'pedidos') loadOrders();
+    }
+  }
+  rehydrateSession();
 })();

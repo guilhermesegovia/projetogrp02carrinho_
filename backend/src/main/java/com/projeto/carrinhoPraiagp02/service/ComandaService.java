@@ -14,10 +14,12 @@ public class ComandaService {
 
     private final ComandaRepo repo;
     private final com.projeto.carrinhoPraiagp02.repository.PedidoRepo orders;
+    private final com.projeto.carrinhoPraiagp02.repository.MesaRepo mesas;
 
-    public ComandaService(ComandaRepo r, com.projeto.carrinhoPraiagp02.repository.PedidoRepo orders) {
+    public ComandaService(ComandaRepo r, com.projeto.carrinhoPraiagp02.repository.PedidoRepo orders, com.projeto.carrinhoPraiagp02.repository.MesaRepo mesas) {
         repo = r;
         this.orders = orders;
+        this.mesas = mesas;
     }
 
     public List<Comanda> all() {
@@ -40,11 +42,17 @@ public class ComandaService {
     }
 
     public Comanda openForCustomer(String client) {
+        return openForCustomer(client, null);
+    }
+
+    public Comanda openForCustomer(String client, String mesaToken) {
         String number;
         do {
             number = "C-" + java.util.UUID.randomUUID();
         } while (repo.existsByNumero(number));
-        return repo.save(new Comanda(number, client));
+        Comanda comanda = new Comanda(number, client);
+        if (mesaToken != null && !mesaToken.isBlank()) comanda.setMesa(mesas.findByToken(mesaToken).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Mesa não encontrada.")));
+        return repo.save(comanda);
     }
 
     public Comanda close(String n) {

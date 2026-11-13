@@ -70,7 +70,8 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/", "/index.html", "/cardapio.html", "/admin", "/assets/**", "/favicon.ico", "/favicon.png", "/robots.txt",
                                 "/app.css", "/app.js", "/menu.js", "/store.js", "/logo.png").permitAll()
-                        .requestMatchers("/api/auth/**", "/api/produtos/**", "/api/categorias/**").permitAll()
+                        .requestMatchers("/api/auth/**", "/api/produtos/**", "/api/categorias/**", "/api/mesas/publico/**").permitAll()
+                        .requestMatchers("/api/mesas/**").hasAnyRole("ADMIN", "FUNCIONARIO")
                         .requestMatchers(HttpMethod.POST, "/api/comandas/cliente").permitAll()
                         .requestMatchers("/api/comandas/**").hasAnyRole("ADMIN", "FUNCIONARIO")
                         .requestMatchers("/api/vendas/**", "/api/pagamentos/**", "/api/relatorios/**").hasRole("ADMIN")

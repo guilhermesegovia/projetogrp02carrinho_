@@ -36,7 +36,7 @@ public class AuthController {
 
     @GetMapping("/csrf")
     public Csrf csrf(CsrfToken token) {
-        return new Csrf(token.getToken());
+        return new Csrf(token == null ? "" : token.getToken());
     }
 
     @PostMapping("/login")

@@ -31,7 +31,8 @@ public class PedidoService {
     public Pedido updateStatus(Long id, String status) {
         Pedido p = get(id);
         List<String> flow = List.of("PENDENTE", "EM_PREPARO", "PRONTO", "ENTREGUE");
-        if (!flow.contains(status) || flow.indexOf(status) != flow.indexOf(p.getStatus()) + 1) {
+        int current = flow.indexOf(p.getStatus());
+        if (current < 0 || current == flow.size() - 1 || !flow.contains(status) || flow.indexOf(status) <= current) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "A mudança de status do pedido não é permitida.");
         }p.status(status);
         return p;

@@ -1,6 +1,7 @@
 package com.projeto.carrinhoPraiagp02;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import org.junit.jupiter.api.Test;
@@ -16,5 +17,9 @@ class LocalSecurityDisabledIntegrationTest {
 
     @Test void protectedEndpointIsAvailableWithoutLoginOrCsrfWhenSecurityDisabled() throws Exception {
         mvc.perform(get("/api/usuarios")).andExpect(status().isOk());
+    }
+
+    @Test void csrfEndpointReturnsEmptyTokenWhenSecurityIsDisabled() throws Exception {
+        mvc.perform(get("/api/auth/csrf")).andExpect(status().isOk()).andExpect(jsonPath("$.token").value(""));
     }
 }

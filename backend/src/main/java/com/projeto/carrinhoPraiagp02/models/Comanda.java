@@ -24,6 +24,8 @@ public class Comanda {
     private LocalDateTime dataFechamento;
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal valorTotal = BigDecimal.ZERO;
+    @ManyToOne
+    private Mesa mesa;
     @OneToMany(mappedBy = "comanda")
     @JsonIgnore
     private List<Pedido> pedidos = new ArrayList<>();
@@ -32,6 +34,7 @@ public class Comanda {
         numero = n;
         nomeCliente = cliente;
     }
+    public void setMesa(Mesa mesa) { this.mesa = mesa; }
 
     public void addTotal(BigDecimal v) {
         valorTotal = valorTotal.add(v);
@@ -56,5 +59,6 @@ public class Comanda {
     public LocalDateTime getDataAbertura() { return dataAbertura; }
     public LocalDateTime getDataFechamento() { return dataFechamento; }
     public BigDecimal getValorTotal() { return valorTotal; }
+    public Mesa getMesa() { return mesa; }
     public List<Pedido> getPedidos() { return pedidos; }
 }

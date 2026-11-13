@@ -18,14 +18,14 @@ public class CheckoutController {
         checkout = c;
     }
 
-    record Pay(@NotBlank String formaPagamento) {}
+    record Pay(String formaPagamento) {}
 
     record CheckoutResult(Long pedidoId, String status, java.math.BigDecimal valorTotal, String trackingToken) {}
 
     @PostMapping("/carrinhos/{id}/checkout")
     @ResponseStatus(HttpStatus.CREATED)
-    public CheckoutResult checkout(@PathVariable Long id, @RequestHeader(value = "X-Cart-Token", required = false) String token, @Valid @RequestBody Pay p, Authentication auth) {
-        Pedido order = checkout.checkout(id, token, p.formaPagamento(), auth == null ? "cliente" : auth.getName());
+    public CheckoutResult checkout(@PathVariable Long id, @RequestHeader(value = "X-Cart-Token", required = false) String token, @RequestBody Pay p, Authentication auth) {
+        Pedido order = checkout.checkout(id, token, p == null || p.formaPagamento() == null ? "PIX" : p.formaPagamento(), auth == null ? "cliente" : auth.getName());
         return new CheckoutResult(order.getId(), order.getStatus(), order.getValorTotal(), order.getTrackingToken());
     }
 
