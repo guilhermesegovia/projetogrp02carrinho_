@@ -2,8 +2,9 @@
   'use strict';
 
   const root = document.getElementById('public-menu');
-  const demoStore = window.DinhosStore;
-  const mesaToken = new URLSearchParams(window.location.search).get('mesa') || '';
+  const query = new URLSearchParams(window.location.search);
+  const mesaToken = query.get('mesa') || '';
+  const testModeRequested = query.get('teste') === '1';
   const categoryName = (value) => /^bebidas?$/i.test(String(value ?? '').trim()) ? 'Bebidas' : String(value ?? '').trim();
   const state = {
     search: '',
@@ -20,15 +21,7 @@
     transaction: null,
     confirmation: null,
   };
-  let catalog = demoStore.db.products.map((product) => ({
-    id: product.id,
-    nome: product.nome,
-    descricao: product.descricao || '',
-    categoria: categoryName(product.categoria),
-    preco: Number(product.preco) || 0,
-    estoque: Number(product.estoque) || 0,
-    disponivel: product.disponivel !== false,
-  }));
+  let catalog = [];
 
   const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
   const money = (value) => Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -41,8 +34,7 @@
   const basketTotal = () => state.basket.reduce((sum, item) => sum + item.preco * item.quantidade, 0);
   const basketCount = () => state.basket.reduce((sum, item) => sum + item.quantidade, 0);
   const basketItem = (id) => state.basket.find((item) => String(item.id) === String(id));
-  const isDemoCatalog = () => state.source === 'fallback';
-  const isApiCatalog = () => state.source === 'api';
+  const canPurchase = () => ['api', 'test-api', 'test-local'].includes(state.source);
 
   function render() {
     const mobileDock = window.matchMedia?.('(max-width: 760px)').matches ?? window.innerWidth <= 760;
@@ -67,7 +59,7 @@
           <p>Escolha seus favoritos e aproveite o dia à beira-mar.</p>
           ${state.mesa ? `<div class="menu-table-context" role="status">Pedido para <b>Mesa ${escapeHtml(state.mesa.numero)}</b></div>` : state.mesaLoading ? '<div class="menu-table-context" role="status">Identificando sua mesa…</div>' : state.mesaError ? `<div class="menu-table-context menu-table-error" role="alert">${escapeHtml(state.mesaError)}</div>` : ''}
         </section>
-        ${state.source === 'fallback' ? `<div class="menu-notice demo-notice"><span aria-hidden="true">ⓘ</span><div><b>Compra de demonstração</b><p>O catálogo online está indisponível. Você pode testar uma compra local; não há cobrança nem envio de pedido ao servidor.</p></div></div>` : ''}
+        ${state.source === 'unavailable' ? '<p class="menu-empty" role="status">Catálogo indisponível no momento.</p>' : ''}
         ${state.source === 'loading' ? '<p class="menu-loading" role="status">Atualizando cardápio…</p>' : ''}
         ${state.confirmation ? confirmationView() : ''}
         <div class="menu-tools">
@@ -82,7 +74,7 @@
         </nav>
         <div class="menu-shop-layout">
           <section class="public-product-grid" aria-label="Produtos do cardápio">
-            ${list.length ? list.map(productCard).join('') : '<div class="menu-empty">Não encontramos itens com essa busca.</div>'}
+            ${list.length ? list.map(productCard).join('') : state.source === 'unavailable' ? '' : '<div class="menu-empty">Não encontramos itens com essa busca.</div>'}
           </section>
           ${basketView()}
         </div>
@@ -102,28 +94,28 @@
   function productCard(product) {
     const stocked = Number(product.estoque) > 0;
     const quantity = basketItem(product.id)?.quantidade || 0;
-    const purchasable = ['api', 'fallback'].includes(state.source) && stocked && !state.busy;
-    const canAdd = ['api', 'fallback'].includes(state.source);
+    const purchasable = canPurchase() && stocked && !state.busy;
+    const canAdd = canPurchase();
     return `<article class="card public-product"><span class="tile-category">${escapeHtml(product.categoria || 'Cardápio')}</span><h2>${escapeHtml(product.nome)}</h2>${product.descricao ? `<p class="public-product-description">${escapeHtml(product.descricao)}</p>` : ''}<div class="public-product-bottom"><span class="public-product-price">${stocked ? money(product.preco) : 'Fora de estoque'}</span><span class="public-stock ${stocked ? '' : 'sold-out'}">${stocked ? 'Disponível' : 'Indisponível'}</span></div>${canAdd ? `<button type="button" class="button ${quantity ? 'button-outline' : 'button-primary'} public-add-button" data-add="${escapeHtml(product.id)}" ${purchasable ? '' : 'disabled'}>${stocked ? (quantity ? `${quantity} no carrinho · adicionar` : 'Adicionar ao carrinho') : 'Indisponível'} <span aria-hidden="true">＋</span></button>` : ''}</article>`;
   }
 
   function basketView() {
-    const demo = isDemoCatalog();
     const loading = state.source === 'loading';
     const basketMarkup = state.basket.length
       ? state.basket.map((item) => `<div class="public-basket-row"><div class="public-basket-copy"><b>${escapeHtml(item.nome)}</b><small>${money(item.preco)} cada</small></div><div class="public-quantity"><button type="button" data-quantity="-1" data-id="${escapeHtml(item.id)}" aria-label="Diminuir ${escapeHtml(item.nome)}" ${state.busy ? 'disabled' : ''}>−</button><span>${item.quantidade}</span><button type="button" data-quantity="1" data-id="${escapeHtml(item.id)}" aria-label="Aumentar ${escapeHtml(item.nome)}" ${state.busy ? 'disabled' : ''}>＋</button></div><b class="public-line-total">${money(item.preco * item.quantidade)}</b></div>`).join('')
       : `<div class="public-basket-empty"><span>＋</span><b>Seu carrinho está vazio</b><p>Adicione itens do cardápio para fazer seu pedido.</p></div>`;
-    const formMarkup = demo
-      ? `<p class="public-demo-checkout-note">Compra de demonstração: não haverá cobrança nem pedido no servidor.</p><form id="checkout-form" class="public-checkout-form demo-checkout-form"><label class="field"><span>Seu nome</span><input name="customerName" type="text" autocomplete="name" maxlength="100" placeholder="Como podemos chamar você?" value="${escapeHtml(state.customerName)}" required ${state.busy ? 'disabled' : ''}></label><button class="button button-primary full-width" type="submit" ${!state.basket.length || state.busy ? 'disabled' : ''}>${state.busy ? 'Finalizando demonstração…' : 'Finalizar compra de demonstração'} <span aria-hidden="true">→</span></button></form>`
+    const formMarkup = state.source === 'unavailable'
+      ? ''
       : loading
-        ? '<p class="public-demo-lock">Aguarde enquanto carregamos o catálogo da loja.</p>'
-        : `<form id="checkout-form" class="public-checkout-form"><label class="field"><span>Seu nome</span><input name="customerName" type="text" autocomplete="name" maxlength="100" placeholder="Como podemos chamar você?" value="${escapeHtml(state.customerName)}" required ${state.busy ? 'disabled' : ''}></label><button class="button button-primary full-width" type="submit" ${!state.basket.length || state.busy || state.mesaLoading || Boolean(mesaToken && !state.mesa) ? 'disabled' : ''}>${state.busy ? 'Enviando pedido…' : 'Fazer pedido'} <span aria-hidden="true">→</span></button><p class="public-payment-note">Pagamento via Pix. A equipe pode ajudar com outras formas.</p></form>`;
-    return `<aside class="card public-basket ${demo ? 'demo-basket' : ''}" aria-label="Seu pedido"><div class="public-basket-heading"><div><span class="eyebrow">${demo ? 'PEDIDO DE DEMONSTRAÇÃO' : 'PEDIDO NA PRAIA'}</span><h2>Seu carrinho</h2></div><span class="public-basket-count">${basketCount()}</span></div>${basketMarkup}${state.basket.length ? `<div class="public-basket-total"><span>Total</span><b>${money(basketTotal())}</b></div>` : ''}${state.status ? `<div class="public-checkout-message ${state.statusType}" role="status" aria-live="polite">${escapeHtml(state.status)}</div>` : ''}${formMarkup}</aside>`;
+        ? '<p class="muted" role="status">Aguarde enquanto carregamos o catálogo da loja.</p>'
+        : `<form id="checkout-form" class="public-checkout-form"><label class="field"><span>Seu nome</span><input name="customerName" type="text" autocomplete="name" maxlength="100" placeholder="Como podemos chamar você?" value="${escapeHtml(state.customerName)}" required ${state.busy ? 'disabled' : ''}></label><button class="button button-primary full-width" type="submit" ${!state.basket.length || state.busy || state.mesaLoading || Boolean(mesaToken && !state.mesa) ? 'disabled' : ''}>${state.busy ? 'Enviando pedido…' : state.source.startsWith('test') ? 'Fazer pedido de teste' : 'Fazer pedido'} <span aria-hidden="true">→</span></button><p class="public-payment-note">Pagamento via Pix. A equipe pode ajudar com outras formas.</p></form>`;
+    return `<aside class="card public-basket" aria-label="Seu pedido"><div class="public-basket-heading"><div><span class="eyebrow">PEDIDO NA PRAIA</span><h2>Seu carrinho</h2></div><span class="public-basket-count">${basketCount()}</span></div>${basketMarkup}${state.basket.length ? `<div class="public-basket-total"><span>Total</span><b>${money(basketTotal())}</b></div>` : ''}${state.status ? `<div class="public-checkout-message ${state.statusType}" role="status" aria-live="polite">${escapeHtml(state.status)}</div>` : ''}${formMarkup}</aside>`;
   }
 
   function confirmationView() {
     const confirmation = state.confirmation;
-    return `<section class="public-success ${confirmation.demo ? 'demo-success' : ''}" role="status"><span class="public-success-mark" aria-hidden="true">✓</span><div><span class="eyebrow">${confirmation.demo ? 'COMPRA DE DEMONSTRAÇÃO' : 'PEDIDO CONFIRMADO'}</span><h2>${confirmation.demo ? 'Demonstração concluída' : `Obrigado, ${escapeHtml(confirmation.customer)}!`}</h2><p>${confirmation.demo ? `Compra local para ${escapeHtml(confirmation.customer)}.` : `Seu pedido`} <b>#${escapeHtml(confirmation.orderId)}</b> ${confirmation.demo ? '— nenhum pedido foi enviado ao servidor.' : 'foi recebido.'} Total: <b>${money(confirmation.total)}</b>.</p>${confirmation.mesaNumero ? `<p class="confirmation-table">Mesa <b>${escapeHtml(confirmation.mesaNumero)}</b></p>` : ''}${confirmation.trackingToken ? `<p class="confirmation-tracking">Código de acompanhamento: <b>${escapeHtml(confirmation.trackingToken)}</b></p>` : ''}</div><button type="button" class="button button-outline button-small" data-dismiss-confirmation>Fechar</button></section>`;
+    const testNote = confirmation.testRemote ? 'de teste foi registrado no servidor (sem cobrança).' : 'de teste foi salvo neste navegador e não foi enviado ao servidor.';
+    return `<section class="public-success" role="status"><span class="public-success-mark" aria-hidden="true">✓</span><div><span class="eyebrow">${confirmation.isTest ? 'PEDIDO DE TESTE REGISTRADO' : 'PEDIDO CONFIRMADO'}</span><h2>Obrigado, ${escapeHtml(confirmation.customer)}!</h2><p>Seu pedido <b>#${escapeHtml(confirmation.orderId)}</b> ${confirmation.isTest ? testNote : 'foi recebido.'} Total: <b>${money(confirmation.total)}</b>.</p>${confirmation.mesaNumero ? `<p class="confirmation-table">Mesa <b>${escapeHtml(confirmation.mesaNumero)}</b></p>` : ''}${confirmation.trackingToken ? `<p class="confirmation-tracking">Código de acompanhamento: <b>${escapeHtml(confirmation.trackingToken)}</b></p>` : ''}</div><button type="button" class="button button-outline button-small" data-dismiss-confirmation>Fechar</button></section>`;
   }
 
   function bindEvents() {
@@ -168,7 +160,7 @@
   }
 
   function changeQuantity(id, delta) {
-    if ((!isApiCatalog() && !isDemoCatalog()) || state.busy) return;
+    if (!canPurchase() || state.busy) return;
     const product = catalog.find((entry) => String(entry.id) === String(id));
     if (!product || !product.disponivel || Number(product.estoque) <= 0) return;
     const existing = basketItem(id);
@@ -229,7 +221,7 @@
       root.querySelector('[name="customerName"]')?.focus();
       return;
     }
-    if (!state.basket.length || (!isApiCatalog() && !isDemoCatalog()) || state.busy) return;
+    if (!state.basket.length || !canPurchase() || state.busy) return;
     if (mesaToken && !state.mesa) {
       state.status = state.mesaError || 'Não foi possível identificar sua mesa. Peça ajuda à equipe.';
       state.statusType = 'error';
@@ -241,27 +233,39 @@
     state.busy = true;
     render();
     try {
-      // API products always use the real cart/checkout path, even if they are
-      // seeded or otherwise look like demo products. Local checkout is only
-      // for the explicit empty/offline-catalog fallback state.
-      if (isDemoCatalog()) {
-        if (typeof demoStore.criarPedidoDemo !== 'function') {
-          throw new Error('A compra de demonstração não está disponível nesta versão do catálogo.');
-        }
-        const result = demoStore.criarPedidoDemo(state.basket, 'PIX', customerName);
-        if (result?.error) throw new Error(result.error);
-        if (result?.pedidoId == null) throw new Error('A demonstração não retornou a confirmação da compra.');
-        const demoTotal = Number(result.valorTotal);
-        state.confirmation = {
-          orderId: result.pedidoId,
-          total: Number.isFinite(demoTotal) ? demoTotal : basketTotal(),
-          customer: customerName,
-          mesaNumero: state.mesa?.numero,
-          demo: true,
-        };
+      if (state.source === 'test-local') {
+        const result = window.DinhosStore?.criarPedidoTeste(customerName, state.basket.map((item) => ({ id: item.id, quantidade: item.quantidade })), state.mesa);
+        if (!result || result.error) throw new Error(result?.error || 'Não foi possível registrar o pedido de teste.');
+        state.confirmation = { orderId: result.order.id, total: result.order.valorTotal, customer: customerName, mesaNumero: state.mesa?.numero, isTest: true, testRemote: false };
         state.basket = [];
         state.transaction = null;
         state.status = '';
+        catalog = localProducts();
+        return;
+      }
+      if (state.source === 'test-api') {
+        try {
+          const csrf = await apiRequest('/api/auth/csrf');
+          const csrfToken = csrf?.token || csrf?.csrfToken;
+          if (!csrfToken) throw new Error('Não foi possível preparar um pedido de teste seguro. Atualize a página e tente novamente.');
+          const result = await apiRequest('/api/pedidos/testes', {
+            method: 'POST',
+            csrfToken,
+            body: {
+              nomeCliente: customerName,
+              ...(state.mesa?.numero == null ? {} : { mesaNumero: Number(state.mesa.numero) }),
+              itens: state.basket.map((item) => ({ produtoId: Number(item.id), quantidade: item.quantidade })),
+            },
+          });
+          if (!result?.id && !result?.numero) throw new Error('O servidor não confirmou o registro do pedido de teste.');
+          state.confirmation = { orderId: result.id ?? result.numero, total: Number.isFinite(Number(result.valorTotal)) ? Number(result.valorTotal) : basketTotal(), customer: customerName, mesaNumero: result.comanda?.mesa?.numero ?? state.mesa?.numero, isTest: true, testRemote: true };
+          state.basket = [];
+          state.transaction = null;
+          state.status = '';
+          refreshProductsAfterPurchase();
+        } catch (error) {
+          throw new Error(`Não foi possível salvar o pedido de teste no servidor: ${error.message}`);
+        }
         return;
       }
       if (!state.transaction) {
@@ -336,22 +340,27 @@
     }));
   }
 
-  window.addEventListener('dinhos:change', () => {
-    if (state.source !== 'fallback') return;
-    catalog = demoStore.db.products.map((product) => ({
-      id: product.id,
-      nome: product.nome,
-      descricao: product.descricao || '',
-      categoria: categoryName(product.categoria),
-      preco: Number(product.preco) || 0,
-      estoque: Number(product.estoque) || 0,
-      disponivel: product.disponivel !== false,
+  function localProducts() {
+    const products = window.DinhosStore?.db?.products;
+    if (!Array.isArray(products)) return [];
+    return products.filter((item) => !item.arquivado).map((item) => ({
+      id: item.id,
+      nome: String(item.nome || 'Produto'),
+      descricao: String(item.descricao || ''),
+      categoria: categoryName(item.categoria),
+      preco: Number(item.preco) || 0,
+      estoque: Number(item.estoque) || 0,
+      disponivel: item.disponivel === true,
     }));
+  }
+
+  function useTestCatalog() {
+    catalog = localProducts();
+    state.source = catalog.length ? 'test-local' : 'unavailable';
+    state.category = 'Todos';
     render();
-  });
-  window.addEventListener('storage', (event) => {
-    if (event.key === 'dinhos-db') window.location.reload();
-  });
+  }
+
   render();
   if (mesaToken) {
     fetch(`/api/mesas/publico/${encodeURIComponent(mesaToken)}`, { headers: { Accept: 'application/json' }, credentials: 'same-origin' })
@@ -369,26 +378,18 @@
   fetch('/api/produtos', { headers: { Accept: 'application/json' }, credentials: 'same-origin' })
     .then((response) => response.ok ? response.json() : Promise.reject(new Error('Catálogo indisponível')))
     .then((items) => {
-      // The local demo catalog is selected only when the API has no usable
-      // product rows; product data itself has no "demo" classification.
-      if (!Array.isArray(items) || items.length === 0) {
-        state.source = 'fallback';
-        render();
-        return;
-      }
+      if (!Array.isArray(items) || items.length === 0) { useTestCatalog(); return; }
       const products = normalizeProducts(items);
       if (!products.length) {
-        state.source = 'fallback';
-        render();
+        useTestCatalog();
         return;
       }
       catalog = products;
-      state.source = 'api';
+      state.source = testModeRequested ? 'test-api' : 'api';
       state.category = 'Todos';
       render();
     })
     .catch(() => {
-      state.source = 'fallback';
-      render();
+      useTestCatalog();
     });
 })();

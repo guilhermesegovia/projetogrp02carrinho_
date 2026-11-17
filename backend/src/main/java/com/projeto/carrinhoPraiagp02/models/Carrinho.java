@@ -1,12 +1,20 @@
 package com.projeto.carrinhoPraiagp02.models;
 
 import java.math.BigDecimal;
-import java.util.ArrayList;
-import java.util.List;
-import jakarta.persistence.*;
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import java.security.SecureRandom;
+import java.util.ArrayList;
 import java.util.HexFormat;
+import java.util.List;
+
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.OneToMany;
 
 @Entity
 public class Carrinho {
@@ -29,7 +37,8 @@ public class Carrinho {
         accessToken = newToken();
     }
 
-    public Carrinho() {}
+    public Carrinho() {
+    }
 
     private static String newToken() {
         byte[] token = new byte[32];
@@ -56,9 +65,24 @@ public class Carrinho {
         itens.clear();
         valorTotal = BigDecimal.ZERO;
     }
-    public Long getId() { return id; }
-    public String getComandaNumero() { return comandaNumero; }
-    public String getAccessToken() { return accessToken; }
-    public BigDecimal getValorTotal() { return valorTotal; }
-    public List<ItemCarrinho> getItens() { return itens; }
+
+    public Long getId() {
+        return id;
+    }
+
+    public String getComandaNumero() {
+        return comandaNumero;
+    }
+
+    public String getAccessToken() {
+        return accessToken;
+    }
+
+    public BigDecimal getValorTotal() {
+        return valorTotal;
+    }
+
+    public List<ItemCarrinho> getItens() {
+        return itens;
+    }
 }

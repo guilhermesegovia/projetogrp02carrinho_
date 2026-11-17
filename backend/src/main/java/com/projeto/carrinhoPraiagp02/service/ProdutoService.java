@@ -1,14 +1,16 @@
 package com.projeto.carrinhoPraiagp02.service;
 
 import java.util.List;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
-import com.projeto.carrinhoPraiagp02.models.Produto;
-import com.projeto.carrinhoPraiagp02.repository.ProdutoRepo;
-import com.projeto.carrinhoPraiagp02.repository.MovimentacaoRepo;
+
 import com.projeto.carrinhoPraiagp02.models.Movimentacao;
+import com.projeto.carrinhoPraiagp02.models.Produto;
+import com.projeto.carrinhoPraiagp02.repository.MovimentacaoRepo;
+import com.projeto.carrinhoPraiagp02.repository.ProdutoRepo;
 
 @Service
 @Transactional
@@ -70,7 +72,8 @@ public class ProdutoService {
                 || product.getPreco() == null || product.getPreco().signum() <= 0 || product.getQuantidadeEstoque() == null
                 || product.getQuantidadeEstoque() < 0 || product.getEstoqueMinimo() == null || product.getEstoqueMinimo() < 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Os dados do produto são inválidos.");
-        }return repo.save(product);
+        }
+        return repo.save(product);
     }
 
     public void delete(Long id) {

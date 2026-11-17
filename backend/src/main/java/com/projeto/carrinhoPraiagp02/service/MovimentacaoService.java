@@ -1,10 +1,12 @@
 package com.projeto.carrinhoPraiagp02.service;
 
 import java.util.List;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+
 import com.projeto.carrinhoPraiagp02.models.Movimentacao;
 import com.projeto.carrinhoPraiagp02.models.Produto;
 import com.projeto.carrinhoPraiagp02.repository.MovimentacaoRepo;
@@ -50,7 +52,7 @@ public class MovimentacaoService {
             case "AJUSTE" -> {
                 amount = Math.abs(quantity - current);
                 if (amount == 0) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "O estoque já está na quantidade solicitada.");
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "O estoque já está na quantidade solicitada.");
 
                 }
                 p.ajustarEstoque(quantity);

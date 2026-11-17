@@ -1,10 +1,12 @@
 package com.projeto.carrinhoPraiagp02.service;
 
 import java.util.List;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+
 import com.projeto.carrinhoPraiagp02.models.Comanda;
 import com.projeto.carrinhoPraiagp02.repository.ComandaRepo;
 
@@ -38,7 +40,8 @@ public class ComandaService {
     public Comanda open(String n, String client) {
         if (repo.existsByNumero(n)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Este número de comanda já está em uso.");
-        }return repo.save(new Comanda(n, client));
+        }
+        return repo.save(new Comanda(n, client));
     }
 
     public Comanda openForCustomer(String client) {
@@ -51,7 +54,9 @@ public class ComandaService {
             number = "C-" + java.util.UUID.randomUUID();
         } while (repo.existsByNumero(number));
         Comanda comanda = new Comanda(number, client);
-        if (mesaToken != null && !mesaToken.isBlank()) comanda.setMesa(mesas.findByToken(mesaToken).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Mesa não encontrada.")));
+        if (mesaToken != null && !mesaToken.isBlank()) {
+            comanda.setMesa(mesas.findByToken(mesaToken).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Mesa não encontrada.")));
+        }
         return repo.save(comanda);
     }
 
@@ -59,7 +64,8 @@ public class ComandaService {
         Comanda c = repo.findLockedByNumero(n).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Comanda não encontrada."));
         if (!c.getStatus().equals("ABERTA")) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "A comanda já está fechada.");
-        }c.fechar();
+        }
+        c.fechar();
         return c;
     }
 }

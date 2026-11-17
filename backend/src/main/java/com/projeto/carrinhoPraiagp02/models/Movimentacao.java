@@ -1,7 +1,13 @@
 package com.projeto.carrinhoPraiagp02.models;
 
 import java.time.LocalDateTime;
-import jakarta.persistence.*;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.ManyToOne;
 
 @Entity
 public class Movimentacao {
@@ -26,11 +32,31 @@ public class Movimentacao {
         quantidade = q;
         usuario = user;
     }
-    public Movimentacao() {}
-    public Long getId() { return id; }
-    public Produto getProduto() { return produto; }
-    public String getTipo() { return tipo; }
-    public int getQuantidade() { return quantidade; }
-    public LocalDateTime getData() { return data; }
-    public String getUsuario() { return usuario; }
+
+    public Movimentacao() {
+    }
+
+    public Long getId() {
+        return id;
+    }
+
+    public Produto getProduto() {
+        return produto;
+    }
+
+    public String getTipo() {
+        return tipo;
+    }
+
+    public int getQuantidade() {
+        return quantidade;
+    }
+
+    public LocalDateTime getData() {
+        return data;
+    }
+
+    public String getUsuario() {
+        return usuario;
+    }
 }

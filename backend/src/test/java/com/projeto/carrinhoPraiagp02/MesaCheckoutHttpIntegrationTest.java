@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import com.projeto.carrinhoPraiagp02.models.Produto;
@@ -23,7 +24,9 @@ import org.springframework.transaction.annotation.Transactional;
  @Test void mesaPublicCustomerCheckoutAndQrFlow() throws Exception {
   mvc.perform(post("/api/mesas").contentType(MediaType.APPLICATION_JSON).content("{\"numero\":-1}")).andExpect(status().isBadRequest());
   JsonNode mesa=json.readTree(mvc.perform(post("/api/mesas").contentType(MediaType.APPLICATION_JSON).content("{\"numero\":47}")).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
-  assertNotNull(mesa.get("token")); assertEquals(64,mesa.get("token").asText().length());
+   assertNotNull(mesa.get("token")); assertEquals(64,mesa.get("token").asText().length());
+   var mesaSalva=mesas.findById(mesa.get("id").asLong()).orElseThrow();
+   assertEquals(mesa.get("token").asText(),mesaSalva.getToken());
   mvc.perform(post("/api/mesas").contentType(MediaType.APPLICATION_JSON).content("{\"numero\":47}")).andExpect(status().isConflict());
   mvc.perform(get("/api/mesas/publico/"+mesa.get("token").asText())).andExpect(status().isOk()).andExpect(jsonPath("$.numero").value(47)).andExpect(jsonPath("$.token").doesNotExist());
   mvc.perform(get("/api/mesas/publico/invalid")).andExpect(status().isNotFound());
@@ -36,7 +39,10 @@ import org.springframework.transaction.annotation.Transactional;
   mvc.perform(post("/api/carrinhos/"+cart.get("id").asLong()+"/itens").header("X-Cart-Token",cart.get("accessToken").asText()).contentType(MediaType.APPLICATION_JSON).content("{\"produtoId\":"+p.getId()+",\"quantidade\":2}")).andExpect(status().isOk());
   JsonNode result=json.readTree(mvc.perform(post("/api/carrinhos/"+cart.get("id").asLong()+"/checkout").header("X-Cart-Token",cart.get("accessToken").asText()).contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
    var order=pedidos.findById(result.get("pedidoId").asLong()).orElseThrow(); assertEquals("PENDENTE",order.getStatus());assertEquals(new BigDecimal("10.50"),order.getValorTotal());assertEquals("Cliente QR",order.getComanda().getNomeCliente());assertEquals(47,order.getComanda().getMesa().getNumero());assertEquals("Suco QR",order.getItens().get(0).getProduto().getNome());assertEquals(2,order.getItens().get(0).getQuantidade());assertEquals(2,products.findById(p.getId()).orElseThrow().getQuantidadeEstoque());
-   mvc.perform(get("/api/pedidos")).andExpect(status().isOk()).andExpect(jsonPath("$[0].comanda.nomeCliente").value("Cliente QR")).andExpect(jsonPath("$[0].comanda.mesa.numero").value(47)).andExpect(jsonPath("$[0].itens[0].produto.nome").value("Suco QR")).andExpect(jsonPath("$[0].valorTotal").value(10.5)).andExpect(jsonPath("$[0].status").value("PENDENTE"));
+    mvc.perform(get("/api/comandas/"+c.getNumero()+"/pedidos")).andExpect(status().isOk()).andExpect(jsonPath("$[0].id").value(order.getId()));
+    mvc.perform(get("/api/pedidos")).andExpect(status().isOk()).andExpect(jsonPath("$[0].id").value(order.getId())).andExpect(jsonPath("$[0].comanda.nomeCliente").value("Cliente QR")).andExpect(jsonPath("$[0].comanda.mesa.numero").value(47)).andExpect(jsonPath("$[0].itens[0].produto.nome").value("Suco QR")).andExpect(jsonPath("$[0].valorTotal").value(10.5)).andExpect(jsonPath("$[0].status").value("PENDENTE"));
+    String today=LocalDate.now().toString();
+    mvc.perform(get("/api/relatorios/vendas/resumo?inicio="+today+"&fim="+today)).andExpect(status().isOk()).andExpect(jsonPath("$.quantidadeVendas").value(1)).andExpect(jsonPath("$.faturamento").value(10.50));
  }
  @Test void allowsForwardSelectionButRejectsBackwardAndTerminalChanges() throws Exception {
   var c=comandas.save(new com.projeto.carrinhoPraiagp02.models.Comanda("STATUS-TEST","Test"));var order=pedidos.save(new com.projeto.carrinhoPraiagp02.models.Pedido(c,BigDecimal.ONE));

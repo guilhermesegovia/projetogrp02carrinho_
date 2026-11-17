@@ -2,8 +2,15 @@ package com.projeto.carrinhoPraiagp02.models;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import jakarta.persistence.*;
+
 import com.fasterxml.jackson.annotation.JsonIgnore;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.OneToOne;
 
 @Entity
 public class Pagamento {
@@ -41,12 +48,35 @@ public class Pagamento {
     public void status(String status) {
         this.status = status;
     }
-    public Pagamento() {}
-    public Long getId() { return id; }
-    public Pedido getPedido() { return pedido; }
-    public Long getCarrinhoId() { return carrinhoId; }
-    public String getFormaPagamento() { return formaPagamento; }
-    public BigDecimal getValor() { return valor; }
-    public String getStatus() { return status; }
-    public LocalDateTime getData() { return data; }
+
+    public Pagamento() {
+    }
+
+    public Long getId() {
+        return id;
+    }
+
+    public Pedido getPedido() {
+        return pedido;
+    }
+
+    public Long getCarrinhoId() {
+        return carrinhoId;
+    }
+
+    public String getFormaPagamento() {
+        return formaPagamento;
+    }
+
+    public BigDecimal getValor() {
+        return valor;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public LocalDateTime getData() {
+        return data;
+    }
 }

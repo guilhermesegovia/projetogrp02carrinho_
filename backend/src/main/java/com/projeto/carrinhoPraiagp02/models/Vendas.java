@@ -2,8 +2,16 @@ package com.projeto.carrinhoPraiagp02.models;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import jakarta.persistence.*;
+
 import com.fasterxml.jackson.annotation.JsonIgnore;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToOne;
 
 @Entity
 public class Vendas {
@@ -32,12 +40,35 @@ public class Vendas {
         valorTotal = total;
         formaPagamento = form;
     }
-    public Vendas() {}
-    public Long getId() { return id; }
-    public Pedido getPedido() { return pedido; }
-    public Comanda getComanda() { return comanda; }
-    public String getUsuario() { return usuario; }
-    public BigDecimal getValorTotal() { return valorTotal; }
-    public String getFormaPagamento() { return formaPagamento; }
-    public LocalDateTime getData() { return data; }
+
+    public Vendas() {
+    }
+
+    public Long getId() {
+        return id;
+    }
+
+    public Pedido getPedido() {
+        return pedido;
+    }
+
+    public Comanda getComanda() {
+        return comanda;
+    }
+
+    public String getUsuario() {
+        return usuario;
+    }
+
+    public BigDecimal getValorTotal() {
+        return valorTotal;
+    }
+
+    public String getFormaPagamento() {
+        return formaPagamento;
+    }
+
+    public LocalDateTime getData() {
+        return data;
+    }
 }

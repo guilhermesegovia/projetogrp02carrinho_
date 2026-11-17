@@ -1,14 +1,20 @@
 package com.projeto.carrinhoPraiagp02.service;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.List;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import com.projeto.carrinhoPraiagp02.models.*;
-import com.projeto.carrinhoPraiagp02.repository.*;
+
+import com.projeto.carrinhoPraiagp02.models.Carrinho;
+import com.projeto.carrinhoPraiagp02.models.ItemCarrinho;
+import com.projeto.carrinhoPraiagp02.models.Produto;
+import com.projeto.carrinhoPraiagp02.repository.CarrinhoRepo;
+import com.projeto.carrinhoPraiagp02.repository.ComandaRepo;
+import com.projeto.carrinhoPraiagp02.repository.ProdutoRepo;
 
 @Service
 @Transactional
@@ -38,7 +44,8 @@ public class CarrinhoService {
         Carrinho cart = carts.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Carrinho não encontrado."));
         if (token == null || !constantTimeEquals(cart.getAccessToken(), token)) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "O token de acesso ao carrinho é inválido.");
-        }return cart;
+        }
+        return cart;
     }
 
     private boolean constantTimeEquals(String expected, String actual) {

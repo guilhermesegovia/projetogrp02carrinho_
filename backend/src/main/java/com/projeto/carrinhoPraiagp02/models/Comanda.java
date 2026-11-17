@@ -4,8 +4,16 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import jakarta.persistence.*;
+
 import com.fasterxml.jackson.annotation.JsonIgnore;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
 
 @Entity
 public class Comanda {
@@ -34,7 +42,10 @@ public class Comanda {
         numero = n;
         nomeCliente = cliente;
     }
-    public void setMesa(Mesa mesa) { this.mesa = mesa; }
+
+    public void setMesa(Mesa mesa) {
+        this.mesa = mesa;
+    }
 
     public void addTotal(BigDecimal v) {
         valorTotal = valorTotal.add(v);
@@ -51,14 +62,43 @@ public class Comanda {
         status = "FECHADA";
         dataFechamento = LocalDateTime.now();
     }
-    public Comanda() {}
-    public Long getId() { return id; }
-    public String getNumero() { return numero; }
-    public String getNomeCliente() { return nomeCliente; }
-    public String getStatus() { return status; }
-    public LocalDateTime getDataAbertura() { return dataAbertura; }
-    public LocalDateTime getDataFechamento() { return dataFechamento; }
-    public BigDecimal getValorTotal() { return valorTotal; }
-    public Mesa getMesa() { return mesa; }
-    public List<Pedido> getPedidos() { return pedidos; }
+
+    public Comanda() {
+    }
+
+    public Long getId() {
+        return id;
+    }
+
+    public String getNumero() {
+        return numero;
+    }
+
+    public String getNomeCliente() {
+        return nomeCliente;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public LocalDateTime getDataAbertura() {
+        return dataAbertura;
+    }
+
+    public LocalDateTime getDataFechamento() {
+        return dataFechamento;
+    }
+
+    public BigDecimal getValorTotal() {
+        return valorTotal;
+    }
+
+    public Mesa getMesa() {
+        return mesa;
+    }
+
+    public List<Pedido> getPedidos() {
+        return pedidos;
+    }
 }

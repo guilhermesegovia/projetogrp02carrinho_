@@ -1,4 +1,4 @@
-/* Local-only demo store. All data is intentionally kept in this browser. */
+/* Browser-local store used by legacy administrative sections. */
 (function (global) {
   'use strict';
   const KEY = 'dinhos-db';
@@ -126,6 +126,57 @@
       }
       state.db = data; save();
     },
+    importCatalogProducts(products) {
+      if (!Array.isArray(products)) throw new Error('O arquivo não contém uma lista válida de produtos.');
+      const data = clone(state.db);
+      const result = { created: 0, updated: 0, errors: [] };
+      const normalizeMatch = (value) => String(value ?? '').trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').toLocaleLowerCase('pt-BR');
+      for (const [index, raw] of products.entries()) {
+        const row = index + 1;
+        const nome = String(raw?.nome ?? '').trim();
+        const categoria = normalizeCategory(raw?.categoria);
+        const sku = String(raw?.sku ?? '').trim();
+        const preco = Number(raw?.preco);
+        const estoque = Number(raw?.estoque);
+        const minimo = Number(raw?.minimo);
+        const custo = Number(raw?.custo);
+        if (!nome || !categoria || !Number.isFinite(preco) || preco <= 0 || !validStock(estoque)
+          || !Number.isInteger(minimo) || minimo < 0 || !Number.isFinite(custo) || custo < 0
+          || typeof raw?.disponivel !== 'boolean' || (raw?.arquivado !== undefined && typeof raw.arquivado !== 'boolean')) {
+          result.errors.push(`Produto ${row}: campos inválidos.`);
+          continue;
+        }
+        const match = sku
+          ? data.products.filter((product) => normalizeMatch(product.sku) === normalizeMatch(sku))
+          : data.products.filter((product) => normalizeMatch(product.nome) === normalizeMatch(nome) && categoryKey(product.categoria) === categoryKey(categoria));
+        if (match.length > 1) {
+          result.errors.push(`Produto ${row} (${nome}): há mais de um produto correspondente no catálogo atual.`);
+          continue;
+        }
+        const fields = {
+          nome,
+          descricao: String(raw.descricao ?? ''),
+          sku,
+          categoria,
+          custo,
+          preco,
+          estoque: Number(estoque),
+          minimo,
+          disponivel: raw.disponivel,
+          arquivado: raw.arquivado === true,
+        };
+        if (match.length === 1) {
+          const existing = match[0];
+          Object.assign(existing, fields, { id: existing.id, ...(existing.serverId == null ? {} : { serverId: existing.serverId }) });
+          result.updated += 1;
+        } else {
+          data.products.push({ id: uid(), criado: now(), ...fields });
+          result.created += 1;
+        }
+      }
+      if (result.created || result.updated) { state.db = data; save(); }
+      return result;
+    },
     archiveProduct(productId) {
       const data = clone(state.db);
       const existing = data.products.find((entry) => entry.id === productId);
@@ -175,33 +226,101 @@
         state.db = data; save(); return '';
       } catch (error) { return error.message; }
     },
-    criarPedidoDemo(items, payment, customerName) {
-      const name = typeof customerName === 'string' ? customerName.trim() : '';
-      if (!name) return { error: 'Informe o nome do cliente' };
-      if (!Array.isArray(items) || !items.length) return { error: 'Adicione itens ao pedido' };
-      const data = clone(state.db);
+    criarPedidoTeste(cliente, items, mesa) {
       try {
-        const orderItems = items.map((item) => {
-          const qtd = Number(item.quantidade);
-          if (!Number.isInteger(qtd) || qtd <= 0) throw new Error('Quantidade inválida');
-          const product = data.products.find((entry) => String(entry.id) === String(item.id));
-          if (!product || !product.disponivel) throw new Error('Produto não encontrado ou indisponível');
-          if (qtd > product.estoque) throw new Error(`Estoque insuficiente de ${product.nome}`);
-          const orderItem = { productId: product.id, nome: product.nome, preco: product.preco, qtd };
-          moveStock(data, product.id, 'saída', qtd, 'Venda demo', name);
-          return orderItem;
+        const nome = String(cliente ?? '').trim();
+        if (!nome) throw new Error('Informe seu nome para continuar.');
+        if (!Array.isArray(items) || !items.length) throw new Error('Adicione ao menos um item ao pedido.');
+        const data = clone(state.db);
+        const normalized = items.map((entry) => {
+          const product = data.products.find((item) => String(item.id) === String(entry.id ?? entry.productId));
+          const quantity = Number(entry.quantidade ?? entry.qtd);
+          if (!product || product.arquivado || !product.disponivel) throw new Error('Um dos produtos não está disponível. Atualize o cardápio e tente novamente.');
+          if (!Number.isInteger(quantity) || quantity < 1) throw new Error(`Informe uma quantidade válida para ${product.nome}.`);
+          if (!validStock(product.estoque) || Number(product.estoque) < quantity) throw new Error(`Estoque insuficiente de ${product.nome}.`);
+          const price = Number(product.preco);
+          if (!Number.isFinite(price) || price < 0) throw new Error(`Preço inválido para ${product.nome}.`);
+          return { product, quantity, price };
         });
-        const paymentNames = { PIX: 'Pix', CARTAO: 'Cartão', DINHEIRO: 'Dinheiro' };
-        data.seq++;
-        data.pedidos.unshift({
-          id: uid(), numero: data.seq, data: now(), cliente: name, responsavel: name,
-          itens: orderItems, pagamento: paymentNames[payment] || payment, status: 'novo',
-          historico: [{ status: 'novo', data: now(), usuario: name }],
-        });
+        const timestamp = new Date();
+        const localDate = [timestamp.getFullYear(), String(timestamp.getMonth() + 1).padStart(2, '0'), String(timestamp.getDate()).padStart(2, '0')].join('-');
+        const localTime = [String(timestamp.getHours()).padStart(2, '0'), String(timestamp.getMinutes()).padStart(2, '0'), String(timestamp.getSeconds()).padStart(2, '0')].join(':');
+        const orderId = `TESTE-${timestamp.getTime()}-${uid().toUpperCase()}`;
+        const orderItems = normalized.map(({ product, quantity, price }) => ({ quantidade: quantity, precoUnitario: price, produto: { id: product.id, nome: product.nome }, productId: product.id }));
+        const orderTotal = orderItems.reduce((sum, item) => sum + item.precoUnitario * item.quantidade, 0);
+        const localTimestamp = `${localDate}T${localTime}`;
+        normalized.forEach(({ product, quantity }) => moveStock(data, product.id, 'saída', quantity, `Pedido de teste ${orderId}`, nome));
+        const comanda = {
+          id: orderId,
+          numero: orderId,
+          origem: 'TESTE_LOCAL',
+          nomeCliente: nome,
+          dataAbertura: localTimestamp,
+          status: 'aberta',
+          mesa: mesa?.numero != null ? { numero: mesa.numero } : null,
+          valorTotal: orderTotal,
+          pedidos: [],
+        };
+        const order = {
+          id: orderId,
+          numero: orderId,
+          origem: 'TESTE_LOCAL',
+          data: localTimestamp,
+          status: 'PENDENTE',
+          valorTotal: orderTotal,
+          itens: orderItems,
+          comanda: { nomeCliente: nome, numero: orderId, mesa: comanda.mesa },
+        };
+        comanda.pedidos.push(order);
+        data.pedidos.unshift(order);
+        data.comandas.unshift(comanda);
         state.db = data;
         save();
-        return { pedidoId: data.seq, valorTotal: total(orderItems) };
-      } catch (error) { return { error: error.message }; }
+        return { order };
+      } catch (error) { return { error: error.message || 'Não foi possível registrar o pedido de teste.' }; }
+    },
+    statusPedidoTeste(id, status) {
+      const data = clone(state.db);
+      const pedido = (data.pedidos || []).find((entry) => entry.origem === 'TESTE_LOCAL' && String(entry.id) === String(id));
+      if (!pedido) return 'Pedido de teste local não encontrado.';
+      if (pedido.status === 'ENTREGUE' || pedido.status === 'CANCELADO') return 'Este pedido de teste já foi finalizado.';
+      const stages = ['PENDENTE', 'EM_PREPARO', 'PRONTO', 'ENTREGUE'];
+      const currentIndex = stages.indexOf(pedido.status);
+      const timestamp = now();
+      const comandaNumero = pedido.comanda?.numero ?? pedido.comanda;
+      const comanda = (data.comandas || []).find((entry) => entry.origem === 'TESTE_LOCAL' && String(entry.numero) === String(comandaNumero));
+      if (status === 'CANCELADO') {
+        if (!comanda) return 'A comanda local deste pedido de teste não foi encontrada.';
+        if (!Array.isArray(data.movs)) data.movs = [];
+        try {
+          (pedido.itens || []).forEach((item) => {
+            const quantity = Number(item.quantidade ?? item.qtd);
+            if (!Number.isInteger(quantity) || quantity < 1) throw new Error('O pedido tem uma quantidade inválida e não pode ser cancelado.');
+            moveStock(data, item.productId ?? item.produto?.id, 'devolução', quantity, `Cancelamento pedido de teste #${pedido.numero || pedido.id}`);
+          });
+        } catch (error) { return error.message; }
+        pedido.status = 'CANCELADO';
+        comanda.status = 'cancelada';
+        comanda.cancelada = timestamp;
+      } else {
+        if (currentIndex < 0 || currentIndex >= stages.length - 1 || status !== stages[currentIndex + 1]) {
+          return 'Selecione somente a próxima etapa do pedido de teste.';
+        }
+        pedido.status = status;
+      }
+      if (!Array.isArray(pedido.historico)) pedido.historico = [];
+      pedido.historico.push({ status: pedido.status, data: timestamp, usuario: state.me?.nome || 'Equipe' });
+      if (Array.isArray(comanda?.pedidos)) {
+        const mirror = comanda.pedidos.find((entry) => String(entry.id) === String(pedido.id));
+        if (mirror) {
+          mirror.status = pedido.status;
+          if (!Array.isArray(mirror.historico)) mirror.historico = [];
+          mirror.historico.push({ status: pedido.status, data: timestamp, usuario: state.me?.nome || 'Equipe' });
+        }
+      }
+      state.db = data;
+      save();
+      return '';
     },
     statusPedido(id, status) {
       const data = clone(state.db); const pedido = data.pedidos.find((entry) => entry.id === id);
