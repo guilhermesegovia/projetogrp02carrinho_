@@ -15,6 +15,7 @@
     mesaLoading: Boolean(mesaToken),
     mesaError: '',
     source: 'loading',
+    catalogApiReachable: false,
     status: '',
     statusType: 'info',
     busy: false,
@@ -108,7 +109,7 @@
       ? ''
       : loading
         ? '<p class="muted" role="status">Aguarde enquanto carregamos o catálogo da loja.</p>'
-        : `<form id="checkout-form" class="public-checkout-form"><label class="field"><span>Seu nome</span><input name="customerName" type="text" autocomplete="name" maxlength="100" placeholder="Como podemos chamar você?" value="${escapeHtml(state.customerName)}" required ${state.busy ? 'disabled' : ''}></label><button class="button button-primary full-width" type="submit" ${!state.basket.length || state.busy || state.mesaLoading || Boolean(mesaToken && !state.mesa) ? 'disabled' : ''}>${state.busy ? 'Enviando pedido…' : state.source.startsWith('test') ? 'Fazer pedido de teste' : 'Fazer pedido'} <span aria-hidden="true">→</span></button><p class="public-payment-note">Pagamento via Pix. A equipe pode ajudar com outras formas.</p></form>`;
+        : `<form id="checkout-form" class="public-checkout-form"><label class="field"><span>Seu nome</span><input name="customerName" type="text" autocomplete="name" maxlength="100" placeholder="Como podemos chamar você?" value="${escapeHtml(state.customerName)}" required ${state.busy ? 'disabled' : ''}></label><button class="button button-primary full-width" type="submit" ${!state.basket.length || state.busy || state.mesaLoading || Boolean(mesaToken && !state.mesa) ? 'disabled' : ''}>${state.busy ? 'Enviando pedido…' : state.source === 'test-local' ? (state.catalogApiReachable ? 'Enviar teste ao servidor' : 'Salvar teste local') : state.source === 'test-api' ? 'Fazer pedido de teste' : 'Fazer pedido'} <span aria-hidden="true">→</span></button><p class="public-payment-note">Pagamento via Pix. A equipe pode ajudar com outras formas.</p></form>`;
     return `<aside class="card public-basket" aria-label="Seu pedido"><div class="public-basket-heading"><div><span class="eyebrow">PEDIDO NA PRAIA</span><h2>Seu carrinho</h2></div><span class="public-basket-count">${basketCount()}</span></div>${basketMarkup}${state.basket.length ? `<div class="public-basket-total"><span>Total</span><b>${money(basketTotal())}</b></div>` : ''}${state.status ? `<div class="public-checkout-message ${state.statusType}" role="status" aria-live="polite">${escapeHtml(state.status)}</div>` : ''}${formMarkup}</aside>`;
   }
 
@@ -234,6 +235,30 @@
     render();
     try {
       if (state.source === 'test-local') {
+        if (state.catalogApiReachable) {
+          try {
+            const csrf = await apiRequest('/api/auth/csrf');
+            const csrfToken = csrf?.token || csrf?.csrfToken;
+            if (!csrfToken) throw new Error('Não foi possível preparar um pedido de teste seguro. Atualize a página e tente novamente.');
+            const result = await apiRequest('/api/pedidos/testes', {
+              method: 'POST',
+              csrfToken,
+              body: {
+                nomeCliente: customerName,
+                ...(state.mesa?.numero == null ? {} : { mesaNumero: Number(state.mesa.numero) }),
+                itens: state.basket.map((item) => ({ nome: item.nome, precoUnitario: item.preco, quantidade: item.quantidade })),
+              },
+            });
+            if (!result?.id && !result?.numero) throw new Error('O servidor não confirmou o registro do pedido de teste.');
+            state.confirmation = { orderId: result.id ?? result.numero, total: Number.isFinite(Number(result.valorTotal)) ? Number(result.valorTotal) : basketTotal(), customer: customerName, mesaNumero: result.comanda?.mesa?.numero ?? state.mesa?.numero, isTest: true, testRemote: true };
+            state.basket = [];
+            state.transaction = null;
+            state.status = '';
+          } catch (error) {
+            throw new Error(`Não foi possível salvar o pedido de teste no servidor: ${error.message}`);
+          }
+          return;
+        }
         const result = window.DinhosStore?.criarPedidoTeste(customerName, state.basket.map((item) => ({ id: item.id, quantidade: item.quantidade })), state.mesa);
         if (!result || result.error) throw new Error(result?.error || 'Não foi possível registrar o pedido de teste.');
         state.confirmation = { orderId: result.order.id, total: result.order.valorTotal, customer: customerName, mesaNumero: state.mesa?.numero, isTest: true, testRemote: false };
@@ -376,7 +401,11 @@
       .finally(() => { state.mesaLoading = false; render(); });
   }
   fetch('/api/produtos', { headers: { Accept: 'application/json' }, credentials: 'same-origin' })
-    .then((response) => response.ok ? response.json() : Promise.reject(new Error('Catálogo indisponível')))
+    .then((response) => {
+      if (!response.ok) throw new Error('Catálogo indisponível');
+      state.catalogApiReachable = true;
+      return response.json();
+    })
     .then((items) => {
       if (!Array.isArray(items) || items.length === 0) { useTestCatalog(); return; }
       const products = normalizeProducts(items);

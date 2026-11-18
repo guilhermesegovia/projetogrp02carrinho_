@@ -38,6 +38,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
   mvc.perform(post("/api/pedidos/testes/{id}/cancelar",cancelId)).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("CANCELADO"));
   mvc.perform(get("/api/pedidos/testes")).andExpect(status().isOk()).andExpect(jsonPath("$[1].status").value("CANCELADO"));
   mvc.perform(get("/api/comandas/testes")).andExpect(status().isOk()).andExpect(jsonPath("$[1].status").value("CANCELADA"));
+  String snapshotBody="{\"nomeCliente\":\"Catálogo local\",\"itens\":[{\"nome\":\"Item offline\",\"precoUnitario\":3.25,\"quantidade\":3}]}";
+  var snapshotResponse=mvc.perform(post("/api/pedidos/testes").contentType(MediaType.APPLICATION_JSON).content(snapshotBody)).andExpect(status().isCreated()).andExpect(jsonPath("$.valorTotal").value(9.75)).andExpect(jsonPath("$.itens[0].produto.nome").value("Item offline")).andReturn().getResponse().getContentAsString();
+  String snapshotId=new tools.jackson.databind.ObjectMapper().readTree(snapshotResponse).get("id").asText();
+  mvc.perform(get("/api/pedidos/testes")).andExpect(status().isOk()).andExpect(jsonPath("$[2].id").value(snapshotId)).andExpect(jsonPath("$[2].itens[0].precoUnitario").value(3.25));
   assertEquals(stock,products.findById(product.getId()).orElseThrow().getQuantidadeEstoque());assertEquals(orderCount,orders.count());assertEquals(salesCount,sales.count());
   String today=LocalDate.now().toString();mvc.perform(get("/api/relatorios/vendas/resumo?inicio="+today+"&fim="+today)).andExpect(status().isOk()).andExpect(jsonPath("$.quantidadeVendas").value(0));
  }

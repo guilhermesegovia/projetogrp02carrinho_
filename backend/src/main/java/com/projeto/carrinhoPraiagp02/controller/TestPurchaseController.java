@@ -17,7 +17,7 @@ import java.util.*;
 public class TestPurchaseController {
     private final TestPurchaseRepo purchases; private final ProdutoRepo products; private final boolean enabled;
     public TestPurchaseController(TestPurchaseRepo purchases, ProdutoRepo products, @Value("${app.test-orders.enabled:false}") boolean enabled){this.purchases=purchases;this.products=products;this.enabled=enabled;}
-    public record ItemRequest(@NotNull Long produtoId,@NotNull @Min(1) @Max(1000) Integer quantidade){}
+    public record ItemRequest(Long produtoId,@Size(max=200) String nome,@DecimalMin("0.00") @DecimalMax("100000.00") BigDecimal precoUnitario,@NotNull @Min(1) @Max(1000) Integer quantidade){}
     public record PurchaseRequest(@NotBlank @Size(max=100) String nomeCliente,@Positive Integer mesaNumero,@NotEmpty @Size(max=50) List<@Valid ItemRequest> itens){}
     public record ProductDTO(Long id,String nome){}
     public record OrderItem(ProductDTO produto,Integer quantidade,BigDecimal precoUnitario){}
@@ -29,7 +29,16 @@ public class TestPurchaseController {
     public OrderDTO create(@Valid @RequestBody PurchaseRequest request){
         if(!enabled) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         TestPurchase p=new TestPurchase(request.nomeCliente().trim(),request.mesaNumero());
-        for(ItemRequest i:request.itens()) { Produto product=products.findById(i.produtoId()).orElseThrow(()->new ResponseStatusException(HttpStatus.BAD_REQUEST,"Produto inexistente")); if(!Boolean.TRUE.equals(product.getDisponibilidade())||product.getQuantidadeEstoque()<i.quantidade()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Produto indisponível ou estoque insuficiente"); p.add(new TestPurchaseItem(product.getId(),product.getNome(),i.quantidade(),product.getPreco())); }
+        for(ItemRequest i:request.itens()) {
+            if(i.produtoId()!=null) {
+                Produto product=products.findById(i.produtoId()).orElseThrow(()->new ResponseStatusException(HttpStatus.BAD_REQUEST,"Produto inexistente"));
+                if(!Boolean.TRUE.equals(product.getDisponibilidade())||product.getQuantidadeEstoque()<i.quantidade()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Produto indisponível ou estoque insuficiente");
+                p.add(new TestPurchaseItem(product.getId(),product.getNome(),i.quantidade(),product.getPreco()));
+            } else {
+                if(i.nome()==null||i.nome().isBlank()||i.nome().length()>200||i.precoUnitario()==null||i.precoUnitario().signum()<0||i.precoUnitario().compareTo(new BigDecimal("100000.00"))>0) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Snapshot de produto inválido");
+                p.add(new TestPurchaseItem(-1L,i.nome().trim(),i.quantidade(),i.precoUnitario()));
+            }
+        }
         return order(purchases.save(p));
     }
     @GetMapping("/api/pedidos/testes") public List<OrderDTO> orders(){return purchases.findAll().stream().map(this::order).toList();}
@@ -39,5 +48,5 @@ public class TestPurchaseController {
     public OrderDTO cancel(@PathVariable String id){TestPurchase p=find(id);if(List.of("ENTREGUE","CANCELADO").contains(p.getStatus()))throw new ResponseStatusException(HttpStatus.CONFLICT,"O pedido não pode ser cancelado.");p.setStatus("CANCELADO");return order(p);}
     @GetMapping("/api/comandas/testes") public List<TestComanda> comandas(){return purchases.findAll().stream().map(p->{TableDTO table=p.getMesaNumero()==null?null:new TableDTO(p.getMesaNumero());String id="TESTE-"+p.getId();String commandStatus="CANCELADO".equals(p.getStatus())?"CANCELADA":"ENTREGUE".equals(p.getStatus())?"FECHADA":"ABERTA";return new TestComanda(id,id,"TESTE_REMOTO",p.getNomeCliente(),p.getData(),commandStatus,p.getValorTotal(),table,List.of(order(p)));}).toList();}
     private TestPurchase find(String value){if(value==null||!value.matches("TESTE-[1-9][0-9]*"))throw new ResponseStatusException(HttpStatus.NOT_FOUND,"Pedido de teste não encontrado.");try{return purchases.findById(Long.parseLong(value.substring(6))).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,"Pedido de teste não encontrado."));}catch(NumberFormatException ex){throw new ResponseStatusException(HttpStatus.NOT_FOUND,"Pedido de teste não encontrado.");}}
-    private OrderDTO order(TestPurchase p){String id="TESTE-"+p.getId();TableDTO table=p.getMesaNumero()==null?null:new TableDTO(p.getMesaNumero());ComandaDTO c=new ComandaDTO(id,p.getNomeCliente(),table);List<OrderItem> items=p.getItens().stream().map(i->new OrderItem(new ProductDTO(i.getProdutoId(),i.getNomeProduto()),i.getQuantidade(),i.getPrecoUnitario())).toList();return new OrderDTO(id,id,"TESTE_REMOTO",p.getData(),p.getStatus(),p.getValorTotal(),items,c);}
+    private OrderDTO order(TestPurchase p){String id="TESTE-"+p.getId();TableDTO table=p.getMesaNumero()==null?null:new TableDTO(p.getMesaNumero());ComandaDTO c=new ComandaDTO(id,p.getNomeCliente(),table);List<OrderItem> items=p.getItens().stream().map(i->new OrderItem(new ProductDTO(i.getProdutoId()<0?null:i.getProdutoId(),i.getNomeProduto()),i.getQuantidade(),i.getPrecoUnitario())).toList();return new OrderDTO(id,id,"TESTE_REMOTO",p.getData(),p.getStatus(),p.getValorTotal(),items,c);}
 }
