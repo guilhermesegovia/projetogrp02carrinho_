@@ -239,10 +239,9 @@
           try {
             const csrf = await apiRequest('/api/auth/csrf');
             const csrfToken = csrf?.token || csrf?.csrfToken;
-            if (!csrfToken) throw new Error('Não foi possível preparar um pedido de teste seguro. Atualize a página e tente novamente.');
             const result = await apiRequest('/api/pedidos/testes', {
               method: 'POST',
-              csrfToken,
+              ...(csrfToken ? { csrfToken } : {}),
               body: {
                 nomeCliente: customerName,
                 ...(state.mesa?.numero == null ? {} : { mesaNumero: Number(state.mesa.numero) }),
@@ -272,10 +271,9 @@
         try {
           const csrf = await apiRequest('/api/auth/csrf');
           const csrfToken = csrf?.token || csrf?.csrfToken;
-          if (!csrfToken) throw new Error('Não foi possível preparar um pedido de teste seguro. Atualize a página e tente novamente.');
           const result = await apiRequest('/api/pedidos/testes', {
             method: 'POST',
-            csrfToken,
+            ...(csrfToken ? { csrfToken } : {}),
             body: {
               nomeCliente: customerName,
               ...(state.mesa?.numero == null ? {} : { mesaNumero: Number(state.mesa.numero) }),
@@ -294,14 +292,13 @@
         return;
       }
       if (!state.transaction) {
-        state.transaction = { customerName, csrfToken: '', comandaNumero: '', cartId: '', cartToken: '', added: new Set() };
+        state.transaction = { customerName, csrfToken: null, comandaNumero: '', cartId: '', cartToken: '', added: new Set() };
       }
       const transaction = state.transaction;
-      if (!transaction.csrfToken) {
+      if (transaction.csrfToken === null) {
         const csrf = await apiRequest('/api/auth/csrf');
         const token = csrf?.token || csrf?.csrfToken;
-        if (!token) throw new Error('A loja não conseguiu preparar uma compra segura. Atualize a página e tente novamente.');
-        transaction.csrfToken = token;
+        transaction.csrfToken = token || '';
       }
       if (!transaction.comandaNumero) {
         const comanda = await apiRequest('/api/comandas/cliente', { method: 'POST', csrfToken: transaction.csrfToken, body: { nomeCliente: customerName, ...(mesaToken ? { mesaToken } : {}) } });
