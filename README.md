@@ -37,7 +37,7 @@ Antes de receber compras reais na nuvem, entre no painel com um usuário ADMIN e
 
 ## Compras de teste remotas
 
-Compras de teste ficam em tabelas próprias e são exibidas nas abas de pedidos/comandas, inclusive em outros dispositivos. Configure `APP_TEST_ORDERS_ENABLED=true` no ambiente do servidor hospedado para permitir a criação durante a apresentação (o padrão é `false`); desligue a opção após a apresentação. O POST permanece protegido pelo CSRF padrão do Spring.
+Compras de teste ficam em tabelas próprias e são exibidas nas abas de pedidos/comandas, inclusive em outros dispositivos. A criação fica habilitada por padrão (`APP_TEST_ORDERS_ENABLED=true`); defina `APP_TEST_ORDERS_ENABLED=false` no servidor para desativá-la após a apresentação. O POST permanece protegido pelo CSRF padrão do Spring.
 
 Para registrar uma compra de teste no servidor, abra o cardápio com `?teste=1` (por exemplo, `https://seu-dominio/cardapio.html?teste=1`). Sem esse parâmetro, compras com produtos da API usam o checkout real. Se a API responder, mas ainda não houver catálogo sincronizado, o cardápio usa os produtos locais e envia snapshots de teste para o servidor. Só quando a API estiver inacessível os testes ficam restritos ao navegador atual.
 

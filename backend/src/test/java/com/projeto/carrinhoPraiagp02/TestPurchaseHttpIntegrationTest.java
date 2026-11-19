@@ -15,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@SpringBootTest(properties={"spring.profiles.active=dev","app.security.enabled=false","app.test-orders.enabled=true"})
+@SpringBootTest(properties={"spring.profiles.active=dev","app.security.enabled=false"})
 @AutoConfigureMockMvc @Transactional class TestPurchaseHttpIntegrationTest {
  @Autowired MockMvc mvc; @Autowired ProdutoRepo products; @Autowired PedidoRepo orders; @Autowired VendasRepo sales; @Autowired TestPurchaseRepo tests;
  @Test void remoteTestPurchaseIsPersistedWithoutRealOrderStockOrRevenue() throws Exception {
